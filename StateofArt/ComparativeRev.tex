@@ -1,0 +1,83 @@
+\documentclass{article}
+
+\usepackage{sectsty}
+\usepackage{graphicx}
+\usepackage{csquotes}
+\usepackage[
+backend=biber,
+style=alphabetic,
+sorting=ynt
+]{biblatex}
+\addbibresource{biblio.bib} %Import the bibliography file
+
+\usepackage{url}
+\usepackage{hyperref}
+
+% Margins
+\topmargin=-0.45in
+\evensidemargin=0in
+\oddsidemargin=0in
+\textwidth=6.5in
+\textheight=9.0in
+\headsep=0.25in
+
+\title{Comparative review}
+
+\begin{document}
+\maketitle	
+
+\paragraph{Allgor2023 \cite{Allgor2023}}
+L'articolo si concentra sulla determinazione di una picking policy, senza affrontare i problemi di stowing o storage, introducendo vincoli sul soddisfacimento dei target rate per ciascun process path, un upper bound sul numero di ordini parzialmente prelevati e una allocazione dei pick coerente con la capacità produttiva delle diverse zone per evitare innecessario idle time. 
+
+Il modello matematico si divide in un \emph{picking module} e un \emph{assignment module}. Il primo modulo considera gli ordini da prelevare e le loro due-date, l'inventorio, la capacità lavorativa, il throughput, e i target dei cycle-time e determina la pick-window a l'assegnazione oridini-pod con l'obiettivo di massimizzare il pile-on. Il secondo prende come input la soluzione del primo modulo e assegna gli ordini alle working station minimizzando la distanza percorsa dai robot e l'idle time. 
+
+Il primo modulo è di fatto intrattabile computazionalmente e viene quindi risolto mediante euristica che suddivide in 4 sottoproblemi la decisione. 
+
+L'articolo fa un'analisi di come la size della pick-window impatti sul cycle-time di ordini con più SKU e sul pile-on.
+
+
+
+
+\paragraph{Barnhart2024 \cite{Barnhart2024}}
+L'articolo formula un problema denotato come TDS-CW, Task Design and Scheduling problem with Congestion and restricted Workload; il modello massimizza il throughput (ossia, massimizza il numero di oggetti presi nel planning horizon) introducendo vincoli sul numero di ordini massimo non completati e sulla congestione (questi sono formulati con una time-space network). 
+
+Dal momento che il problema così definito è intrattabile per istanze medio-grandi, si risolve il problema con un algoritmo di ricerca locale in cui i vicinati vengono generati tramite un algoritmo di machine learning. Nello specifico, in una fase preliminare di training si determina una funzione capace di predire il valore della funzione obiettivo e poi grazie a questa si genera un sottoproblema in cui si masssimizza il miglioramento predetto da questa.
+
+
+
+\paragraph{DeKoster2023 \cite{DeKoster2023}}
+L'articolo si pone il problema della schedulazione di un batch fissato di ordini senza considerare vincoli di congestione e e propone due approcci differenti. 
+
+Il primo si basa su una decomposizione in tre sottoproblemi successivi (clustering degli ordini e assegnazione cluster-pod, assegnamento alle workstation, assegnamento robot-pod) con obiettivi di minimizzazione delle distanze percorse. Il secondo è una formulazione integrata che decide congiuntamente assegnamenti e percorsi, con l'obiettivo di minimizzare il makespan del batch.
+Per risolvere la seconda fase viene introdota una metaeuristica, \enquote{Two-Layer Revolving Algorithm}, in cui viene iterativamente risolto il modello (o una sua versione rilassata) mantenendo alcune variabili decisionali fissate in modo da accellerare la ricerca dell'ottimo.
+
+La trattazione include inoltre analisi di sensitività dell'impatto che la composizione degli ordini, il layout del FC e la posizione delle SKU nei pod hanno sul makespan.
+Infine, si cerca di superare la limitazione introdotta dal \enquote{batch-mode} ad un caso in cui al tempo 0 ci siano già ordini in lavorazione.
+
+
+
+\paragraph{Merschformann2019 \cite{Merschformann2019}}
+L'articolo si concentra sul definire e testare delle policy per i seguenti problemi decisionali posti a livello operazionale: \emph{Pick Order Assignment} (selezione di un pick order dal backlog e assegnameno ad una workstation), \emph{Replenishment Order Assignment} (assegnazione del task di replenishment, che vengono serviti con politica FCFS, ad una replenishment workstation), \emph{Pick Pod Selection} (selezione di un pod per un task di tipo pick), \emph{Replenishment Pod Selection} (selezione di un pod per un task di tipo replenishment), \emph{Pod Storage Assignment} (scelta di dove far ritornare il pod).
+
+Per valutare le regole si è usato un software di simulazione agent-based e event-driven e si è proceduto in due fasi.
+Inizialmente, si è fissato il layout del FC e si sono valutate singolarmente le regole per ogni problema in base ad alcune misure di prestazione (che si sono tutte rivelate essere fortemente dipendenti dal throughtput). In seguito, si è valutato come le policy che si erano rivelate promettenti si sarebbero comportate in differenti layout e scenari di domanda.
+
+
+\paragraph{Shi2024 \cite{shi2024}}
+L'articolo definisce una strategia congiunta di ottimizzazione dell'assegnamento degli ordini e quello dei pod senza porsi il problema dedlla possibile congestione dei robot o di un eventuale replenishment.
+Il modello matematico formulato è un MIP, che vuole minimizzare il numero totale di visite dei pod alle workstation, di fatto intrattabile per istanze medio-grandi. 
+
+Per risolvere il modello viene proposto un'euristica, denotata come FFSA (Fulfillment-Focused Simultaneous Assignment), che si sviluppa in due fasi.
+Nella prima fase, viene usato un hybrid ALNS per determinare un sottoinsieme di pod per soddisfare la domanda in cui gli operatori di distruzione sono definiti classicamente, mentre l'operatore di costruzione si ottiene risolvendo un problema di ottimizzazione. Nella seconda fase, si definisce l'euristica MRACS che si basa su una prima strategia iterativa per determinare un iniziale assegnamento pod-(alcuni) ordini e poi di uno schema MRB per ottenere l'intero assegnamento.
+
+
+
+
+
+
+
+
+
+\newpage
+\printbibliography
+\end{document}
