@@ -63,12 +63,44 @@ Per valutare le regole si è usato un software di simulazione agent-based e even
 Inizialmente, si è fissato il layout del FC e si sono valutate singolarmente le regole per ogni problema in base ad alcune misure di prestazione (che si sono tutte rivelate essere fortemente dipendenti dal throughtput). In seguito, si è valutato come le policy che si erano rivelate promettenti si sarebbero comportate in differenti layout e scenari di domanda.
 
 
+\paragraph{Boysen2023 \cite{Boysen2023}}
+Lo scenario in cui si pone l'articolo è quello in cui le SKU arrivano sequenzialmente e il compito dei robot è di prendere ciascuna SKU e portarla al suo collection point. In questo senso il problema si divide in 3 decisioni: Piece-to-Order assignment (P2O), Order-to-Collection Point assignment (O2CP) and Piece-to-Robot assignment and robot scheduling (P2R).
+
+L'articolo prima considera il caso deterministico di informazione perfetta e risolve il modello, che vorrebbe minimizzare il makespan,  decomponendolo nelle sue tre decisioni: P2O (minimizzazione del makespan), O2CP (minimizzazione della distanza percorsa) e P2R. Questi vengono risolti tramite euristiche basate su regole di priorità.
+
+Si estende la trattazione al caso di informazione parziale (\emph{limited lookahed}): ora, per pendere una decisione, vengono prima generati degli scenari, si risolvono i corrispondenti problemi deterministici e, infine, la decisione è presa in base ad una funzione di consenso.
+
+L'articolo si chiude con un'analisi di sensitività sull'impatto che avrebbe l'aumentare il numero di robot o la capacità di lookahed.
+
+
+\paragraph{Xu2024 \cite{Wu2024}}
+L'articolo cerca di risolvere in maniera integrata sia la gestione degli ordini ma anche il task di replenishment. La performance del sistema è misurata in base al makespan.
+
+Per fare ciò si suddivide il problema in 5 fasi: (1) si suddividono gli ordini in cluster e si assegnano questi alle picking station; (2) si assegnano i pod agli ordini cercando di minimizzare i replenishment necessari; (3) si determinano i percorsi dei pod minimizzando la massima distanza percorsa; (4) si assegnano i robot ai pod minimizzando la distanza del robot dal pod; (5) schedulazione delle attività dei pod minimizzando il makespan. Ogni fase è modellata tramite MILP.
+
+I modelli vengono risoltri tramite Variable Neighborhood Search ponendosi il problema di come generare una buona soluzione iniziale (risolto tramite euristica) e come definire un buon vicinato (vengono definiti 4 operatori).
+
+L'articolo si chiude con un'analisi di sensitività sulla composizione degli ordini e sul numero di picking station.
+
+
+
+\paragraph{Subramanian2024 \cite{Subramanian2024}}
+L'articolo presenta l'algoritmo SASORL (Simultaneous Allocation and Sequencing of Orders Reinforcement Learning) che simultaneamente alloca e sequenza gli ordini ai robot cercando di minimizzare la distanza percorsa. In questo articolo, con il termone \enquote{ordine} non ci si riferisce alla classica spedizione, ma ad uno scaffale da spostare.
+
+Il framework proposto è un algoritmo di reinforcement learning in cui lo stato è rappresentato dagli ordini soddisfatti, mentre lo spazio delle azioni sono gli ordini da soddisfarre. Per costruire la Q-table, si considera un termine di penalizzazione basato sulla distanza che bisogna percorrere per soddisfarre l'azione scelta. 
+Ad ogni iterazione l'algoritmo impara come minimizzare il termine di penalità.
+
+
+
+\newpage
 \paragraph{Shi2024 \cite{shi2024}}
 L'articolo definisce una strategia congiunta di ottimizzazione dell'assegnamento degli ordini e quello dei pod senza porsi il problema dedlla possibile congestione dei robot o di un eventuale replenishment.
 Il modello matematico formulato è un MIP, che vuole minimizzare il numero totale di visite dei pod alle workstation, di fatto intrattabile per istanze medio-grandi. 
 
 Per risolvere il modello viene proposto un'euristica, denotata come FFSA (Fulfillment-Focused Simultaneous Assignment), che si sviluppa in due fasi.
-Nella prima fase, viene usato un hybrid ALNS per determinare un sottoinsieme di pod per soddisfare la domanda in cui gli operatori di distruzione sono definiti classicamente, mentre l'operatore di costruzione si ottiene risolvendo un problema di ottimizzazione. Nella seconda fase, si definisce l'euristica MRACS che si basa su una prima strategia iterativa per determinare un iniziale assegnamento pod-(alcuni) ordini e poi di uno schema MRB per ottenere l'intero assegnamento.
+Nella prima fase, viene usato un hybrid ALNS per determinare un sottoinsieme di pod per soddisfare la domanda in cui gli operatori di distruzione sono definiti classicamente, mentre l'operatore di costruzione si ottiene risolvendo un problema di ottimizzazione. Nella seconda fase, si definisce l'euristica MRACS che si basa su una prima strategia iterativa per determinare un iniziale assegnamento pod-(alcuni) ordini e poi di uno schema MRB per ottenere l'intero assegnamento (strategia construttiva basata sul massimo marginal return ottenibile).
+
+Nell'articolo c'è una descrizione su come generare istanze sintetiche.
 
 
 

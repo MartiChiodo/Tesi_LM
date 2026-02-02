@@ -1,0 +1,15 @@
+[0] Config.pm:307> INFO - This is Biber 2.19
+[1] Config.pm:310> INFO - Logfile is 'ComparativeRev.blg'
+[334] biber-MSWIN64:340> INFO - === 
+[396] Biber.pm:419> INFO - Reading 'ComparativeRev.bcf'
+[593] Biber.pm:979> INFO - Found 8 citekeys in bib section 0
+[614] Biber.pm:4419> INFO - Processing section 0
+[631] Biber.pm:4610> INFO - Looking for bibtex file 'biblio.bib' for section 0
+[711] bibtex.pm:1713> INFO - LaTeX decoding ...
+[750] bibtex.pm:1519> INFO - Found BibTeX data source 'biblio.bib'
+[1053] UCollate.pm:68> INFO - Overriding locale 'en-US' defaults 'variable = shifted' with 'variable = non-ignorable'
+[1053] UCollate.pm:68> INFO - Overriding locale 'en-US' defaults 'normalization = NFD' with 'normalization = prenormalized'
+[1054] Biber.pm:4239> INFO - Sorting list 'ynt/global//global/global' of type 'entry' with template 'ynt' and locale 'en-US'
+[1054] Biber.pm:4245> INFO - No sort tailoring available for locale 'en-US'
+[1097] bbl.pm:660> INFO - Writing 'ComparativeRev.bbl' with encoding 'UTF-8'
+[1113] bbl.pm:763> INFO - Output to ComparativeRev.bbl
