@@ -92,6 +92,25 @@ Ad ogni iterazione l'algoritmo impara come minimizzare il termine di penalità.
 
 
 
+\paragraph{Zhuang2022 \cite{Zhuang2022}}
+L'articolo propone un modello integrato per l'assegnazione degli ordini e la determinazione di una sequenza per i pod volto alla minimizzazione dei pod usati da ciascuna workstation. \\
+Viene inoltre anche considerato modello rilassato (rispetto al modello principale si consider aun'unica workstation con capacità infinita) per determinare un lowerbound sul numero di pod da usare.
+
+Per la risoluzione del modello viene adottato un algoritmo di Adaptive Large Neighborhood Search che integra un'euristica data-driven e il Simulated Annealing (SA).
+In particolare, la soluzione iniziale è costruita tramite l'algoritmo IMORS (un'euristica data-driven che genera una soluzione feasible considerando il workload e i possibili conflitti tra i pod). Successivamente, il Simulated Annealing viene utilizzato per perturbare e migliorare la sequenza degli ordini, in seguito IMORS-E (estensione di IMORS che a partire dalla sequenza degli oridni genera una sequenza dei pod) viene impiegato per completare la soluzione. \\
+La generazione del vicinato avviene mediante l'ALNS, in cui gli operatori di distruzione e di riparazione agiscono sulla sequenza degli ordini.
+
+
+\paragraph{Justkowiak2023 \cite{Justkowiak2023}}
+L'articolo si concentra inizialmente sulla pianificazione degli ordini e sul sequenziamento dei pod per uno scenario a singola workstation con l'obiettivo di minimizzare il numero totale di visite dei pod.
+
+L'approccio di soluzione è un'euristica basata sulla generazione di colonne e si sviluppa in 3 fasi: (1) raggruppamento degli ordini in batch tramite generazione di colonne, (2) sequenziamento dei batch per minimizzare i cambi di variabili, questo problema è formulato come commesso viaggiatore, e (3) raffinamento della soluzione.
+
+
+L'artcolo propone infine un'estensione al caso di molteplici workstation.
+
+
+
 \newpage
 \paragraph{Shi2024 \cite{shi2024}}
 L'articolo definisce una strategia congiunta di ottimizzazione dell'assegnamento degli ordini e quello dei pod senza porsi il problema dedlla possibile congestione dei robot o di un eventuale replenishment.
