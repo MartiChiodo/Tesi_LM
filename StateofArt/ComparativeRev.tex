@@ -27,58 +27,61 @@ sorting=ynt
 \maketitle	
 
 \paragraph{Allgor2023 \cite{Allgor2023}}
-L'articolo si concentra sulla determinazione di una picking policy, senza affrontare i problemi di stowing o storage, introducendo vincoli sul soddisfacimento dei target rate per ciascun process path, un upper bound sul numero di ordini parzialmente prelevati e una allocazione dei pick coerente con la capacità produttiva delle diverse zone per evitare innecessario idle time. 
+Il paper presenta un algoritmo volto ad ottimizzare la selezione degli ordini, l'assegnazione ordini-pod e l'assegnazione ordini-workstation, con l'obiettivo di minimizzare la distanza percorsa per ciascuna operazione di picking. \\
+Non vengono considerati problemi di congestione e replenishment, tuttavia sono presenti dei vincoli di inventario e dei vincoli sul soddisfacimento dei target rate per ciascun process path (per garantire la feasibility del processo).
 
-Il modello matematico si divide in un \emph{picking module} e un \emph{assignment module}. Il primo modulo considera gli ordini da prelevare e le loro due-date, l'inventorio, la capacità lavorativa, il throughput, e i target dei cycle-time e determina la pick-window a l'assegnazione oridini-pod con l'obiettivo di massimizzare il pile-on. Il secondo prende come input la soluzione del primo modulo e assegna gli ordini alle working station minimizzando la distanza percorsa dai robot e l'idle time. 
+L'approccio risolutivo si basa sulla decomposizione del problema in due fasi. Un \emph{picking module}, volto a detrminare la pick window e il sottinsieme di pod da usare per minimizzare il pile-on, e un \emph{assigment module}, volto a determinare l'assegnamento ordini-workstation per minimizzare la distanza percorsa.
 
-Il primo modulo è di fatto intrattabile computazionalmente e viene quindi risolto mediante euristica che suddivide in 4 sottoproblemi la decisione. 
-
-L'articolo fa un'analisi di come la size della pick-window impatti sul cycle-time di ordini con più SKU e sul pile-on.
+Il paper si chiude con un'analisi sul trade-off tra il cycle-time di multi-item order e pile-on.
 
 
 
 
 \paragraph{Barnhart2024 \cite{Barnhart2024}}
-L'articolo formula un problema denotato come TDS-CW, Task Design and Scheduling problem with Congestion and restricted Workload; il modello massimizza il throughput (ossia, massimizza il numero di oggetti presi nel planning horizon) introducendo vincoli sul numero di ordini massimo non completati e sulla congestione (questi sono formulati con una time-space network). 
+Il paper formula a \emph{task design and scheduling problem with congestion and restricted workload (TDS-CW)}, un MIP volto ad ottimizzare l'assegnamento order-workstations, item-pod e il movimento dei pod massimizzando il throughput (numero di items prelevati entro la fine dell'orizzonte temporale). \\
+Nel modello vengono considerati dei vincoli di congestione introducendo un'approssimazione basata su una rete spazio-temporale e dei vincoli di inventario (non si considera il replenishment).
 
-Dal momento che il problema così definito è intrattabile per istanze medio-grandi, si risolve il problema con un algoritmo di ricerca locale in cui i vicinati vengono generati tramite un algoritmo di machine learning. Nello specifico, in una fase preliminare di training si determina una funzione capace di predire il valore della funzione obiettivo e poi grazie a questa si genera un sottoproblema in cui si masssimizza il miglioramento predetto da questa.
+L'approccio risolutivo si basa su un algoritmo di ricerca locale in cui i vicinati vengono generati tramite un algoritmo di machine learning. Nello specifico, in una fase preliminare di training si determina una funzione capace di predire il valore della funzione obiettivo e poi grazie a questa si genera un sottoproblema in cui si masssimizza il miglioramento predetto da questa.
+
 
 
 
 \paragraph{DeKoster2023 \cite{DeKoster2023}}
-L'articolo si pone il problema della schedulazione di un batch fissato di ordini senza considerare vincoli di congestione e e propone due approcci differenti. 
+Il paper si concentra sull'ottimizzazione dell'assegnamento ordini-workstations, pods-workstations, robots-pods e della sequenza in cui i pod visitano le workstation minimizzando il makespan di un batch di ordini. \\
+Non ci si pone il problema della congestione e neanche quello del replenishment (ci sono tuttavia vincoli di inventario), che però viene considerato in un'estensione del modelo principale.
 
+Vengono presentati due approcci risolutivi.
 Il primo si basa su una decomposizione in tre sottoproblemi successivi (clustering degli ordini e assegnazione cluster-pod, assegnamento alle workstation, assegnamento robot-pod) con obiettivi di minimizzazione delle distanze percorse. Il secondo è una formulazione integrata che decide congiuntamente assegnamenti e percorsi, con l'obiettivo di minimizzare il makespan del batch.
 Per risolvere la seconda fase viene introdota una metaeuristica, \enquote{Two-Layer Revolving Algorithm}, in cui viene iterativamente risolto il modello (o una sua versione rilassata) mantenendo alcune variabili decisionali fissate in modo da accellerare la ricerca dell'ottimo.
 
-La trattazione include inoltre analisi di sensitività dell'impatto che la composizione degli ordini, il layout del FC e la posizione delle SKU nei pod hanno sul makespan.
-Infine, si cerca di superare la limitazione introdotta dal \enquote{batch-mode} ad un caso in cui al tempo 0 ci siano già ordini in lavorazione.
+La trattazione include alcune analisi di sensitività e alcune estensioni del modello principale, tra cui due volte a superare le limitazioni del \enquote{batch-mode}.
 
 
 
 \paragraph{Merschformann2019 \cite{Merschformann2019}}
 L'articolo si concentra sul definire e testare delle policy per i seguenti problemi decisionali posti a livello operazionale: \emph{Pick Order Assignment} (selezione di un pick order dal backlog e assegnameno ad una workstation), \emph{Replenishment Order Assignment} (assegnazione del task di replenishment, che vengono serviti con politica FCFS, ad una replenishment workstation), \emph{Pick Pod Selection} (selezione di un pod per un task di tipo pick), \emph{Replenishment Pod Selection} (selezione di un pod per un task di tipo replenishment), \emph{Pod Storage Assignment} (scelta di dove far ritornare il pod).
 
-Per valutare le regole si è usato un software di simulazione agent-based e event-driven e si è proceduto in due fasi.
+Per valutare le regole si è usato un software (RAWSim-O) di simulazione agent-based e event-driven e si è proceduto in due fasi.
 Inizialmente, si è fissato il layout del FC e si sono valutate singolarmente le regole per ogni problema in base ad alcune misure di prestazione (che si sono tutte rivelate essere fortemente dipendenti dal throughtput). In seguito, si è valutato come le policy che si erano rivelate promettenti si sarebbero comportate in differenti layout e scenari di domanda.
 
 
 \paragraph{Boysen2023 \cite{Boysen2023}}
-Lo scenario in cui si pone l'articolo è quello in cui le SKU arrivano sequenzialmente e il compito dei robot è di prendere ciascuna SKU e portarla al suo collection point. In questo senso il problema si divide in 3 decisioni: Piece-to-Order assignment (P2O), Order-to-Collection Point assignment (O2CP) and Piece-to-Robot assignment and robot scheduling (P2R).
+Lo scenario in cui si pone l'articolo è quello in cui le SKU arrivano sequenzialmente su un nastro e il compito dei robot è di prendere ciascuna SKU e portarla al suo collection point. In questo senso i task su cui si concentra il paper sono Piece-to-Order assignment (P2O), Order-to-Collection Point assignment (O2CP) and Piece-to-Robot assignment and robot scheduling (P2R).
+L'ottimizzazione è volta al minimizzazione del makespan con dei vincoli di inventario (non sono considerati vincoli sulla congestione o task relativi al replenishment).
 
-L'articolo prima considera il caso deterministico di informazione perfetta e risolve il modello, che vorrebbe minimizzare il makespan,  decomponendolo nelle sue tre decisioni: P2O (minimizzazione del makespan), O2CP (minimizzazione della distanza percorsa) e P2R. Questi vengono risolti tramite euristiche basate su regole di priorità.
+L'articolo prima considera il caso deterministico di informazione perfetta e risolve il modello decomponendolo nelle sue tre decisioni: P2O (minimizzazione del makespan), O2CP (minimizzazione della distanza percorsa) e P2R. Questi vengono risolti tramite euristiche basate su regole di priorità.
 
 Si estende la trattazione al caso di informazione parziale (\emph{limited lookahed}): ora, per pendere una decisione, vengono prima generati degli scenari, si risolvono i corrispondenti problemi deterministici e, infine, la decisione è presa in base ad una funzione di consenso.
 
 L'articolo si chiude con un'analisi di sensitività sull'impatto che avrebbe l'aumentare il numero di robot o la capacità di lookahed.
 
 
-\paragraph{Xu2024 \cite{Wu2024}}
-L'articolo cerca di risolvere in maniera integrata sia la gestione degli ordini ma anche il task di replenishment. La performance del sistema è misurata in base al makespan.
+\paragraph{Wu2024 \cite{Wu2024}}
+Il paper si concentra sul congiuntamente ottimizzare le decisioni di assegnameno (order-station, orders-pods e robots-pods) e di sequenziamento. L'obiettivo è di minimizzare il makespan (si considera un insieme fisso di ordini) gestendo anche dei task di replenishment. \\
+L'ottimizzazione è inizialmente formulata mediante 5 MILP che sequenzialmente ottimizzano le sequenti decisioni: (1) gli ordini vengono clusterizzati e assegnati alle workstations, (2) si assegnano i pod agli ordini cercando di minimizzare i replenishment necessari; (3) si determinano i percorsi dei pod minimizzando la massima distanza percorsa; (4) si assegnano i robot ai pod minimizzando la distanza del robot dal pod; (5) schedulazione delle attività dei pod minimizzando il makespan.
 
-Per fare ciò si suddivide il problema in 5 fasi: (1) si suddividono gli ordini in cluster e si assegnano questi alle picking station; (2) si assegnano i pod agli ordini cercando di minimizzare i replenishment necessari; (3) si determinano i percorsi dei pod minimizzando la massima distanza percorsa; (4) si assegnano i robot ai pod minimizzando la distanza del robot dal pod; (5) schedulazione delle attività dei pod minimizzando il makespan. Ogni fase è modellata tramite MILP.
-
-I modelli vengono risoltri tramite Variable Neighborhood Search ponendosi il problema di come generare una buona soluzione iniziale (risolto tramite euristica) e come definire un buon vicinato (vengono definiti 4 operatori).
+L'approccio risolutivo mira a ottimizzare le decisioni congiuntamente mediante un algoritmo di VNS.
+Una soluzione iniziale è ricavata tramite euristica che sfrutta la struttira del problema, mentre i vicinati sono definiti manipolando questa mediante 4 operatori.
 
 L'articolo si chiude con un'analisi di sensitività sulla composizione degli ordini e sul numero di picking station.
 
@@ -94,7 +97,8 @@ Ad ogni iterazione l'algoritmo impara come minimizzare il termine di penalità.
 
 \paragraph{Zhuang2022 \cite{Zhuang2022}}
 L'articolo propone un modello integrato per l'assegnazione degli ordini e la determinazione di una sequenza per i pod volto alla minimizzazione dei pod usati da ciascuna workstation. \\
-Viene inoltre anche considerato modello rilassato (rispetto al modello principale si consider aun'unica workstation con capacità infinita) per determinare un lowerbound sul numero di pod da usare.
+Viene inoltre anche considerato modello rilassato (rispetto al modello principale si consider aun'unica workstation con capacità infinita) per determinare un lowerbound sul numero di pod da usare. \\
+Non vengono considerati vincoli sulla congestione e sull'inventario.
 
 Per la risoluzione del modello viene adottato un algoritmo di Adaptive Large Neighborhood Search che integra un'euristica data-driven e il Simulated Annealing (SA).
 In particolare, la soluzione iniziale è costruita tramite l'algoritmo IMORS (un'euristica data-driven che genera una soluzione feasible considerando il workload e i possibili conflitti tra i pod). Successivamente, il Simulated Annealing viene utilizzato per perturbare e migliorare la sequenza degli ordini, in seguito IMORS-E (estensione di IMORS che a partire dalla sequenza degli oridni genera una sequenza dei pod) viene impiegato per completare la soluzione. \\
@@ -102,24 +106,22 @@ La generazione del vicinato avviene mediante l'ALNS, in cui gli operatori di dis
 
 
 \paragraph{Justkowiak2023 \cite{Justkowiak2023}}
-L'articolo si concentra inizialmente sulla pianificazione degli ordini e sul sequenziamento dei pod per uno scenario a singola workstation con l'obiettivo di minimizzare il numero totale di visite dei pod.
+L'articolo si concentra inizialmente sulla pianificazione degli ordini e sul sequenziamento dei pod per uno scenario a singola workstation con l'obiettivo di minimizzare il numero totale di visite dei pod. 
 
-L'approccio di soluzione è un'euristica basata sulla generazione di colonne e si sviluppa in 3 fasi: (1) raggruppamento degli ordini in batch tramite generazione di colonne, (2) sequenziamento dei batch per minimizzare i cambi di variabili, questo problema è formulato come commesso viaggiatore, e (3) raffinamento della soluzione.
-
+L'approccio di soluzione è un'euristica basata sulla generazione di colonne e si sviluppa in 3 fasi: (1) determinazione di un batch ridotto $K^*$ tramite generazione di colonne (un batch è definito da un sottoinsieme di ordini e da un sottoinsieme dei pod), (2) sequenziamento dei batch che costituiscono $K^*$ e, per ciascuno di essi, dei pod con l'obiettivo di minimizzare il numero di cambi di pod che si hanno concetenando la sequenza dei pod dei batch (formulabile tramite commesso viaggiatore), e (3) raffinamento della soluzione cercando di eliminare pods dalla sequenza concatenata senza perdere feasibility.
 
 L'artcolo propone infine un'estensione al caso di molteplici workstation.
 
 
 
-\newpage
-\paragraph{Shi2024 \cite{shi2024}}
-L'articolo definisce una strategia congiunta di ottimizzazione dell'assegnamento degli ordini e quello dei pod senza porsi il problema dedlla possibile congestione dei robot o di un eventuale replenishment.
-Il modello matematico formulato è un MIP, che vuole minimizzare il numero totale di visite dei pod alle workstation, di fatto intrattabile per istanze medio-grandi. 
+\paragraph{Cheng2024 \cite{Cheng2024}}
+Il task principale affrontato dall'articolo è l'ottimizzazione simultanea dello scheduling di un batch di ordini, l'assegnamento ordini-workstation e ordini-pod-robot volta a minimizzare il costo di processo. Questo è definito considerando l'uso di robot e station, la distanza percorsa dai robot e il makespan del batch di ordini considerato. \\
+Nel modello non vengono integrati aspetti legati alla congestione o al replenishment (non ci sono vincoli di inventario).
 
-Per risolvere il modello viene proposto un'euristica, denotata come FFSA (Fulfillment-Focused Simultaneous Assignment), che si sviluppa in due fasi.
-Nella prima fase, viene usato un hybrid ALNS per determinare un sottoinsieme di pod per soddisfare la domanda in cui gli operatori di distruzione sono definiti classicamente, mentre l'operatore di costruzione si ottiene risolvendo un problema di ottimizzazione. Nella seconda fase, si definisce l'euristica MRACS che si basa su una prima strategia iterativa per determinare un iniziale assegnamento pod-(alcuni) ordini e poi di uno schema MRB per ottenere l'intero assegnamento (strategia construttiva basata sul massimo marginal return ottenibile).
+L'articolo risolve il problema mediante l'algoritmo EDRL-OBOS basato sul deep reinforcement learning. \\
+Lo spazio degli stati è definito da un vettore che rappresenta l'allocazione degli ordini, lo spazio delle azione è un insieme di euristiche per scegliere un assegnamento di robot e station. La funzione di reward è basata sul costo di completamento di casciun ordine. La Q-table è sostituita da un coppia di reti neurali, la target net e la evaluation net, che approssimano la Q-function.
 
-Nell'articolo c'è una descrizione su come generare istanze sintetiche.
+
 
 
 
