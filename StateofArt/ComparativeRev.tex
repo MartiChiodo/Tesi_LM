@@ -132,11 +132,28 @@ Per rendere l'algortimo più veloce, questo è stato integrato con alcuni meccan
 
 
 \paragraph{Valle2025 \cite{Valle2025}}
+Il paper affronta il task dell'assegnamento ordini-picker e pod-picker minimizzando la movimentazione dei pod, senza considerare vincoli sulla congestione ma considerando quelli di inventario.
+
+L'approccio risolutivo è basato sulla divisione degli ordini in due sottoinsiemi disgiunti e su una decomposizione del problema in due stadi. \\
+In una prima fase, si vuole determinare l'assegnamento ordini del primo sottoinsieme-picker e pod-picker con l'obiettivo di minimizzare il numero di pod usati e massimizzare il numero di SKU presenti su questi pod. Tra i vincoli di questo problema, due assicurano che il sottoinsieme di pod selezionato è tale da permettere di soddisfare la totalità deli ordini in termini di inventario. 
+Nella seconda fase, fissato il sottoinsieme di rack precedentemente determinato, si cerca di massimizzare il numero di ordini del secondo sottoinsieme completabili riassegnando ordini-picker e pod-picker. \\
+Le due fasi sono espresse tramite IP.
+
+Il paper propone anche una strategia di \emph{rack reduction}, basata sulla capacità dei pod di soddisfare gli ordini, utile a migliorare le performance computazionali dei due modelli.
 
 
 
 
+\paragraph{Teck2024 \cite{Teck2024}}
+Il paper si concentra sella determinazione di una schedule robusta degli ordini sulle workstation e l'assegnazione delle task di retrieval ai robot. La robustezza è misurata considerando la variabilità dei tempi di processo. \\
+Nel modello non vengono considerati vincoli di inventario.
 
+La metrica considerata è basata sul costo, composto da un termine che descrive il costo operazionale del warehouse e un termine che penalizzi il ritardo di completamento degli ordini.
+
+L'approccio usato è basato su un algortimo genetico che si serve della simulazione in fase di valutazione. In particolare, una popolazione iniziale viene costruita tramite euristica, questa si evolve secondo delle mutazioni e dei crossover e poi viene valutata tramite simulazione. \\
+Essendo la simulazione un tool di valutazione costoso computazionalmente, vengono presentate delle tecniche di allocazione delle risorse computazionale agli individui più promettenti.
+
+La componente di simulazione è imporante per riuscire a valutare le soluzioni in condizioni di incertezza sui tempi di processo.
 
 
 
