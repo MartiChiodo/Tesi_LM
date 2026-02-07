@@ -6,7 +6,7 @@
 \usepackage[
 backend=biber,
 style=alphabetic,
-sorting=ynt
+sorting=nyt
 ]{biblatex}
 \addbibresource{biblio.bib} %Import the bibliography file
 
@@ -122,6 +122,16 @@ L'articolo risolve il problema mediante l'algoritmo EDRL-OBOS basato sul deep re
 Lo spazio degli stati è definito da un vettore che rappresenta l'allocazione degli ordini, lo spazio delle azione è un insieme di euristiche per scegliere un assegnamento di robot e station. La funzione di reward è basata sul costo di completamento di casciun ordine. La Q-table è sostituita da un coppia di reti neurali, la target net e la evaluation net, che approssimano la Q-function.
 
 
+
+\paragraph{Justkowiak2024 \cite{Justkowiak2024}}
+Il paper presenta un algoritmo per l'ottimizazione dello scheduling degli ordini e del sequenziamento dei pod, nel caso di una singola workstation, volta a minimizzare il numero di visite dei pod. 
+
+L'approccio usato è basato sulla programmazione dinamica: a partire da uno stato iniziale si può passare ad uno stato successivo secondo un \emph{translation process} a tre stadi. L'ottimalità si trova poi ripercorrendo al contrario la ricorsione. \\
+Per rendere l'algortimo più veloce, questo è stato integrato con alcuni meccanismi di pruning. Un primo meccansimo è basato sul limite inferiore (calcolato mediante MIP o euristica) del numero di visite di pod necessari per passare dallo stato non-finale a quello finale; altri meccansimi sono basati sull'ordinare i pod in base al contributo che apportano e gestire in maniera efficace gli ordini duplicati.
+
+
+
+\paragraph{Valle2025 \cite{Valle2025}}
 
 
 
