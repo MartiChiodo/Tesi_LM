@@ -38,16 +38,16 @@ Il paper si chiude con un'analisi sul trade-off tra il cycle-time di multi-item 
 
 
 \paragraph{Barnhart2024 \cite{Barnhart2024}}
-Il paper formula a \emph{task design and scheduling problem with congestion and restricted workload (TDS-CW)}, un MIP volto ad ottimizzare l'assegnamento order-workstations, item-pod e il movimento dei pod massimizzando il throughput (numero di items prelevati entro la fine dell'orizzonte temporale). \\
+Il paper formula un \emph{task design and scheduling problem with congestion and restricted workload (TDS-CW)}, espresso come un MIP volto a ottimizzare l'assegnamento order-workstation, item-pod e il movimento dei pod massimizzando il throughput (numero di item prelevate entro la fine dell'orizzonte temporale). \\
 Nel modello vengono considerati dei vincoli di congestione introducendo un'approssimazione basata su una rete spazio-temporale e dei vincoli di inventario (non si considera il replenishment).
 
-L'approccio risolutivo si basa su un algoritmo di ricerca locale in cui i vicinati vengono generati tramite un algoritmo di machine learning. Nello specifico, in una fase preliminare di training si determina una funzione capace di predire il valore della funzione obiettivo e poi grazie a questa si genera un sottoproblema in cui si masssimizza il miglioramento predetto da questa.
+L'approccio risolutivo si basa su un algoritmo di ricerca locale in cui i vicinati vengono generati tramite un algoritmo di machine learning. Nello specifico, in una fase preliminare di training si determina una funzione capace di predire il valore della funzione obiettivo e poi grazie a questa si genera un sottoproblema massimizzando il miglioramento predetto da questa.
 
 
 
 
 \paragraph{DeKoster2023 \cite{DeKoster2023}}
-Il paper si concentra sull'ottimizzazione dell'assegnamento ordini-workstations, pods-workstations, robots-pods e della sequenza in cui i pod visitano le workstation minimizzando il makespan di un batch di ordini. \\
+Il paper si concentra sull'ottimizzazione dell'assegnamento ordini-workstation, pod-workstation, robot-pod e della sequenza in cui i pod visitano le workstation minimizzando il makespan di un batch di ordini. \\
 Non ci si pone il problema della congestione e neanche quello del replenishment (ci sono tuttavia vincoli di inventario), che però viene considerato in un'estensione del modelo principale.
 
 Vengono presentati due approcci risolutivi.
@@ -67,7 +67,7 @@ Inizialmente, si è fissato il layout del FC e si sono valutate singolarmente le
 
 \paragraph{Boysen2023 \cite{Boysen2023}}
 Lo scenario in cui si pone l'articolo è quello in cui le SKU arrivano sequenzialmente su un nastro e il compito dei robot è di prendere ciascuna SKU e portarla al suo collection point. In questo senso i task su cui si concentra il paper sono Piece-to-Order assignment (P2O), Order-to-Collection Point assignment (O2CP) and Piece-to-Robot assignment and robot scheduling (P2R).
-L'ottimizzazione è volta al minimizzazione del makespan con dei vincoli di inventario (non sono considerati vincoli sulla congestione o task relativi al replenishment).
+L'ottimizzazione è volta alla minimizzazione del makespan con dei vincoli di inventario (non sono considerati vincoli sulla congestione o task relativi al replenishment).
 
 L'articolo prima considera il caso deterministico di informazione perfetta e risolve il modello decomponendolo nelle sue tre decisioni: P2O (minimizzazione del makespan), O2CP (minimizzazione della distanza percorsa) e P2R. Questi vengono risolti tramite euristiche basate su regole di priorità.
 
@@ -81,14 +81,14 @@ Il paper si concentra sul congiuntamente ottimizzare le decisioni di assegnameno
 L'ottimizzazione è inizialmente formulata mediante 5 MILP che sequenzialmente ottimizzano le sequenti decisioni: (1) gli ordini vengono clusterizzati e assegnati alle workstations, (2) si assegnano i pod agli ordini cercando di minimizzare i replenishment necessari; (3) si determinano i percorsi dei pod minimizzando la massima distanza percorsa; (4) si assegnano i robot ai pod minimizzando la distanza del robot dal pod; (5) schedulazione delle attività dei pod minimizzando il makespan.
 
 L'approccio risolutivo mira a ottimizzare le decisioni congiuntamente mediante un algoritmo di VNS.
-Una soluzione iniziale è ricavata tramite euristica che sfrutta la struttira del problema, mentre i vicinati sono definiti manipolando questa mediante 4 operatori.
+Una soluzione iniziale è ricavata tramite euristica che sfrutta la struttura del problema, mentre i vicinati sono definiti manipolando questa mediante 4 operatori.
 
 L'articolo si chiude con un'analisi di sensitività sulla composizione degli ordini e sul numero di picking station.
 
 
 
 \paragraph{Subramanian2024 \cite{Subramanian2024}}
-L'articolo presenta l'algoritmo SASORL (Simultaneous Allocation and Sequencing of Orders Reinforcement Learning) che simultaneamente alloca e sequenza gli ordini ai robot cercando di minimizzare la distanza percorsa. In questo articolo, con il termone \enquote{ordine} non ci si riferisce alla classica spedizione, ma ad uno scaffale da spostare.
+L'articolo presenta l'algoritmo SASORL (Simultaneous Allocation and Sequencing of Orders Reinforcement Learning) che simultaneamente alloca e sequenza gli ordini ai robot cercando di minimizzare la distanza percorsa. In questo articolo, con il termine \enquote{ordine} non ci si riferisce alla classica spedizione, ma ad uno scaffale da spostare.
 
 Il framework proposto è un algoritmo di reinforcement learning in cui lo stato è rappresentato dagli ordini soddisfatti, mentre lo spazio delle azioni sono gli ordini da soddisfarre. Per costruire la Q-table, si considera un termine di penalizzazione basato sulla distanza che bisogna percorrere per soddisfarre l'azione scelta. 
 Ad ogni iterazione l'algoritmo impara come minimizzare il termine di penalità.
@@ -97,7 +97,7 @@ Ad ogni iterazione l'algoritmo impara come minimizzare il termine di penalità.
 
 \paragraph{Zhuang2022 \cite{Zhuang2022}}
 L'articolo propone un modello integrato per l'assegnazione degli ordini e la determinazione di una sequenza per i pod volto alla minimizzazione dei pod usati da ciascuna workstation. \\
-Viene inoltre anche considerato modello rilassato (rispetto al modello principale si consider aun'unica workstation con capacità infinita) per determinare un lowerbound sul numero di pod da usare. \\
+Viene inoltre anche considerato modello rilassato (rispetto al modello principale si considera un'unica workstation con capacità infinita) per determinare un lowerbound sul numero di pod da usare. \\
 Non vengono considerati vincoli sulla congestione e sull'inventario.
 
 Per la risoluzione del modello viene adottato un algoritmo di Adaptive Large Neighborhood Search che integra un'euristica data-driven e il Simulated Annealing (SA).
@@ -108,7 +108,7 @@ La generazione del vicinato avviene mediante l'ALNS, in cui gli operatori di dis
 \paragraph{Justkowiak2023 \cite{Justkowiak2023}}
 L'articolo si concentra inizialmente sulla pianificazione degli ordini e sul sequenziamento dei pod per uno scenario a singola workstation con l'obiettivo di minimizzare il numero totale di visite dei pod. 
 
-L'approccio di soluzione è un'euristica basata sulla generazione di colonne e si sviluppa in 3 fasi: (1) determinazione di un batch ridotto $K^*$ tramite generazione di colonne (un batch è definito da un sottoinsieme di ordini e da un sottoinsieme dei pod), (2) sequenziamento dei batch che costituiscono $K^*$ e, per ciascuno di essi, dei pod con l'obiettivo di minimizzare il numero di cambi di pod che si hanno concetenando la sequenza dei pod dei batch (formulabile tramite commesso viaggiatore), e (3) raffinamento della soluzione cercando di eliminare pods dalla sequenza concatenata senza perdere feasibility.
+L'approccio di soluzione è un'euristica basata sulla generazione di colonne e si sviluppa in 3 fasi: (1) determinazione di un batch ridotto $K^*$ tramite generazione di colonne (un batch è definito da un sottoinsieme di ordini, da un sottoinsieme dei pod e la loro sequenza), (2) sequenziamento dei batch che costituiscono $K^*$ e, per ciascuno di essi, dei pod con l'obiettivo di minimizzare il numero di cambi di pod che si hanno concetenando la sequenza dei pod dei batch (formulabile tramite commesso viaggiatore), e (3) raffinamento della soluzione cercando di eliminare pods dalla sequenza concatenata senza perdere feasibility.
 
 L'artcolo propone infine un'estensione al caso di molteplici workstation.
 
@@ -132,7 +132,7 @@ Per rendere l'algortimo più veloce, questo è stato integrato con alcuni meccan
 
 
 \paragraph{Valle2025 \cite{Valle2025}}
-Il paper affronta il task dell'assegnamento ordini-picker e pod-picker minimizzando la movimentazione dei pod, senza considerare vincoli sulla congestione ma considerando quelli di inventario.
+Il paper affronta il task dell'assegnamento ordini-picker e pod-picker minimizzando la movimentazione dei pod, senza considerare vincoli sulla congestione (neanche determinando la sequenza dei pod) ma considerando quelli di inventario.
 
 L'approccio risolutivo è basato sulla divisione degli ordini in due sottoinsiemi disgiunti e su una decomposizione del problema in due stadi. \\
 In una prima fase, si vuole determinare l'assegnamento ordini del primo sottoinsieme-picker e pod-picker con l'obiettivo di minimizzare il numero di pod usati e massimizzare il numero di SKU presenti su questi pod. Tra i vincoli di questo problema, due assicurano che il sottoinsieme di pod selezionato è tale da permettere di soddisfare la totalità deli ordini in termini di inventario. 
@@ -155,6 +155,22 @@ Essendo la simulazione un tool di valutazione costoso computazionalmente, vengon
 
 La componente di simulazione è imporante per riuscire a valutare le soluzioni in condizioni di incertezza sui tempi di processo.
 
+
+\paragraph{Jiao2023 \cite{Jiao2023}}
+Il paper affronta congiuntamente il task di assegnamento ordini-workstation e quello ordini-pod, con l'obiettivo di minimizzare il numero di pod movimentati. Il replenishment non è considerato, mentre sono presenti vincoli di inventario.
+
+L'approccio risolutivo proposto è un'euristica in cui i due task vengono ottimizzati in maniera alternata (algoritmo HADOD). In particolare, viene definita una prima regola, detta \emph{POA rule} o \emph{Fully-supplied}, che determina l'assegnamento di uno o più ordini a una workstation e a uno o più pod, considerando un insieme limitato di questi. Una seconda regola, detta \emph{PPS rule} o \emph{Fully-demand}, viene invece attivata quando il sottoinsieme di pod selezionato non è più sufficiente a soddisfare gli ordini: in questo caso, uno o più pod vengono aggiunti al subset in modo da rendere soddisfacibile almeno un ordine non ancora considerato.
+
+La validazione dell'euristica è condotta tramite simulazione utilizzando il framework open-source RAWSim-O.
+
+
+
+\paragraph{Jiao2026 \cite{Jiao2026}}
+Questo paper estende il lavoro precedente adottando lo stesso approccio risolutivo per affrontare in maniera congiunta i task di order assignment, pod assignment e task allocation. L'obiettivo viene ora riformulato come la massimizzazione del numero di ordini assegnati.
+
+Il nuovo algoritmo proposto, denominato HADGS, alterna l'ottimizzazione della regola OA (basata sullo stesso principio della regola POA) e della regola PS\&TA. Quest'ultima combina la pod selection, svolta in modo analogo alla regola PPS, con la task allocation, nella quale viene assegnato il robot più vicino al pod da movimentare.
+
+Anche in questo caso, l'euristica viene validata tramite simulazione mediante il framework open-source RAWSim-O.
 
 
 
