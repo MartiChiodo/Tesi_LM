@@ -1,0 +1,83 @@
+\documentclass{article}
+
+\usepackage{sectsty}
+\usepackage{graphicx}
+\usepackage{csquotes}
+\usepackage{amsmath}
+\usepackage[
+backend=biber,
+style=alphabetic,
+sorting=nyt
+]{biblatex}
+\addbibresource{SketchSimBiblio.bib} %Import the bibliography file
+
+\usepackage{url}
+\usepackage{hyperref}
+
+% Margins
+\topmargin=-0.45in
+\evensidemargin=0in
+\oddsidemargin=0in
+\textwidth=6.5in
+\textheight=9.0in
+\headsep=0.25in
+
+\title{Abbozzo Simulatore}
+
+\begin{document}
+\maketitle	
+
+Per questo abbozzo di simulatore prendo spunto dal software RAWSim-O \cite{Merschformann2017RAWSimOAS}.
+
+\subsection{Assunzioni}
+\begin{itemize}
+    \item Viene modellizzato un sistema parts-to-picker: i pod mobili conteneti varie SKU ciascuno vengono portati a delle workstation fisse dai robot della fleet. Le SKU sono distribuite su vari pod.
+    \item Non è considerato il numero di una data SKU su un pod (e quindi neanche dei vincoli di inventario o il task di replenishment), pertanto neanche il volume delle SKU ha importanza
+
+\end{itemize}
+
+
+\section{Input Information}
+Il simulatore avrà bisogno di alcune informazione iniziali al partire dalle quali creare l'istanza di simulazione. La sezione è impostata seguendo quanto fatto da \cite{Merschformann2017RAWSimOAS} adattandolo al nostro caso semplificato.
+
+\subsection{Layout specification}
+Un primo input riguarda il layout fisico del sistema. \\
+A questo livello ci sono vari parametri da fissare:
+\begin{itemize}
+    \item $P$ = numero di pod
+    \item $R$ = numero di robot
+    \item $W$ = numero di workstation
+    \item \cite{BOYSEN2017550} introduce anche un parametro $\xi \in \{0.005, 0.05, 0.2\}$ che indica la fraione di SKU per rack. In questo senso ogni pod contiene un numero di SKU compreso in  $[1, \lceil \xi P \rceil ]$.
+\end{itemize}
+
+Una prima struttura dati necessaria è una matrice $N \times N$ ($P = N^2$) le cui entrate rapresentano il set di SKU contenute dal pod.
+
+\subsection{Scenario Specification} \label{SS}
+In questa fase vengono specificati dei parametri che permettono la generazione degli ordini.
+
+Alcuni, tra cui \cite{Jiao2023} e \cite{Justkowiak2023} e il simulatore RAWSim-O stesso, seguono la logica di generazione degli ordini presentata da \cite{BOYSEN2017550}. Per ogni ordine si genera inizialmente il numero di item da una distribuzione uniforme discreta in $[1, 0.1*R+1]$ (per lui $R$ non è il numero di pod ma un valore inferiore che indica quanti pod sono necessari a soddisfare gli ordini, $R \in [5; 100]$) e poi vengono estratte le SKU. Ogni SKU è caratterizzata da un parametro di priorità (estratto da un esponenziale di parametro $\lambda = 0.5$) che determina la probabilità che venga estratta \[p_i = \frac{\text{parametro di priorità SKU i}}{\text{somma dei parametri di priorità di tutte le SKU}}\].
+
+
+\subsection{Controller Configuration}
+Regola la parte di in che modo gestire l'ottimizzazione.
+
+
+\section{Struttura della Simulazione}
+Prima di entrare nei dettagli tecnici della simulazione, descrivo brevemente la dinamica del sistema.
+
+Gli ordini arrivano in modo continuo (per semplicità assumeremo tempi di interarrivo costanti) e vanno ad inserirsi nel \textbf{backlog degli ordini}. A intervalli regolari viene eseguito un ottimizzatore che, considerando solo un sottoinsieme di ordini presenti nel backlog, determina l'assegnazione ordini-workstation-tempo e la sequenza con cui i pod devono visitare le diverse workstation.
+
+Il cuore della simulazione consiste nel prendere lo scheduling generato dall'ottimizzatore e simulare i movimenti dei robot incaricati di trasportare i pod verso le workstation assegnate.
+
+
+
+
+
+
+
+
+
+\newpage
+\printbibliography
+
+\end{document}
