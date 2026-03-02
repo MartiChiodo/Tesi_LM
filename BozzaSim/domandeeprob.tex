@@ -1,0 +1,21 @@
+\section{Domande al prof}
+\begin{enumerate}
+    \item Io sto pensando alla simulazione come costruita a due livelli: il primo  si occupa della generazione degli ordini e dell'ottimizzazione periodica, mentre il secondoe simula gli spostamenti dei pod. E questi due livelli devono in qualche modo interagire in quanto (1) lo stato attuale del sistema influenza alcuni vincoli dell'ottimizzatore (ad esempio se non ho finito di servire l'ordine $1$ alla workstation $2$ devo inserire un vincolo per cui $x_1,2,0 = 1$), e viceversa (2) l'output dell'ottimizzatore è l'input della simulazione dei movimenti. \\
+    Per farli interagire senza incoerenze, posso assumere che quando parte lottimizzazione il sistema sia \enquote{congelato} e poi quando faccio ripartire la simulazione resetto la lista degli eventi? \\
+    Alternativamente, potrei assumere (mi sembra più drastico) che l'ottimizzatore parta solo quando ho finito di servire tutti gli oridini considerati nell'ottimizzazione precedente.
+
+    \item Se considero le variabili $y_{pwt}$ come valide indicazioni di scheduling dei pod, in quale istante della simulazione devo effettivamente attivare la richiesta di movimentazione del pod verso la workstation? \\
+    Mi vengono in mente due approcci: (1) impostare una coda delle richieste che attinge ai robot come risorsa (problema: come decido chi ha la priorità tra pod necessari allo stesso step) oppure (2) generare richieste \enquote{anticipate} che tengano conto di quanto disti il pod dalla workstation. \\
+    Seconda questione: Se ho dei robot liberi può avere senso che inizio a prelevare pod che mi serviranno?
+
+    
+
+
+\end{enumerate}
+
+
+\section{Problemi a cui devo pensare}
+\begin{enumerate}
+    \item PROBLEMA: fare attenzione ai casi $y_{p,w_1,t} = 1$ e $y_{p,w_2,t+1} = 1$ $\longrightarrow$  forse risolto
+    \item PROBLEMA: se $y_{p,w_1,t} = 1$ e $y_{p,w_2,t+2} = 1$ ha effettivamente senso che il pod torni al suo posto? C'è qualcosa nell'ottimizzatore che si assicuri che ciò non accada?
+\end{enumerate}

@@ -61,23 +61,73 @@ Alcuni, tra cui \cite{Jiao2023} e \cite{Justkowiak2023} e il simulatore RAWSim-O
 \subsection{Controller Configuration}
 Regola la parte di in che modo gestire l'ottimizzazione.
 
-
+\medskip
 \section{Struttura della Simulazione}
 Prima di entrare nei dettagli tecnici della simulazione, descrivo brevemente la dinamica del sistema.
 
 Gli ordini arrivano in modo continuo (per semplicità assumeremo tempi di interarrivo costanti) e vanno ad inserirsi nel \textbf{backlog degli ordini}. A intervalli regolari viene eseguito un ottimizzatore che, considerando solo un sottoinsieme di ordini presenti nel backlog, determina l'assegnazione ordini-workstation-tempo e la sequenza con cui i pod devono visitare le diverse workstation.
 
-Il cuore della simulazione consiste nel prendere lo scheduling generato dall'ottimizzatore e simulare i movimenti dei robot incaricati di trasportare i pod verso le workstation assegnate.
+La simulazione deve inoltre contenere un \textbf{emulatore del movimento dei pod}, ilcui compito è di prendere lo scheduling generato dall'ottimizzatore e simulare i movimenti dei robot incaricati di trasportare i pod verso le workstation assegnate. \\
+Questo emulatore sarà descritto da uno stato contenete informazione sugli ordini in lavorazione nelle workstation, sui pod in movimentazione e sullo stato (busy o free) di un robot che sarà input dell'ottimizzatore quando verrà richiamato.
 
 
 
 
+\subsection{Emulatore del movimento dei robot}
+Questa è il modulo che a partire dallo scheduling ottenuto simula la vera e propria dinamica del sistema. \\
+Immagino che l'ottimizzatore consideri variabili decisionali del tipo
+\[
+\begin{aligned}
+\text{ordini-workstation-tempo} \quad 
+x_{owt} &=
+\begin{cases}
+1 & \text{se allo step $t$ l'ordine $o$ è aperto alla workstation $w$} \\
+0 & \text{altrimenti}
+\end{cases} \\[1em]
+\text{pod-workstation-tempo} \quad 
+y_{pwt} &=
+\begin{cases}
+1 & \text{se allo step $t$ il pod $p$ visita la workstation $w$} \\
+0 & \text{altrimenti}
+\end{cases}
+\end{aligned}
+\]
 
+
+Come definisco lo \textbf{stato}? Ad ogni istante devo tenere traccia di:
+\begin{itemize}
+    \item \textbf{Stato degli Ordini}: per ogni ordine devo sapere il suo stato (in attesa, aperto, completato) e le SKU mancanti per il completamento
+    \item \textbf{Stato dei Pod}: per ogni pod devo sapere il suo stato (assegnato o no)
+    \item \textbf{Stato dei Robot}: per ogni robot devo sapere il suo stato (occupato o no) e la sua posizione se non occupato
+    \item \textbf{Stato delle Workstation}: per ogni workstation devo sapere la coda degli ordini (determinata da $x_{owt}$), il suo stato (occupata o meno) e la coda dei pod in attesa di processamento ($y_{pwt}$ mi determina la sequenza ideale ma essendo deterministici i travel time e i tempi di picking potrei avere dei ritardi)
+    \item \textbf{Coda dei Task}: ogni task è definito dal pod che necessito, da un parametro di priorità (direi che dipende sia dalla distanza da percorrere che da quando mi serve in una workstation) e dalle destinazioni che devo raggiungere (penso ad una lista ordinata di workstation ad esempio). Questa coda ha come risorsa i robot (per semplicità un task viene allocato al robot libero più vicino).
+\end{itemize}
+
+Quali sono gli \textbf{eventi}?
+\begin{itemize}
+    \item \textbf{ARRIVO\_POD\_WORKSTATION(p,w,r)}: evento che si crea quando un task viene allocato con timestamp $t = t_0 + \text{tempo spostamento}$. Conseguenza: il pod viene incodato alla workstation
+    \item \textbf{FINE\_PICKING(p,w,r)}: evento che si crea quando un pod è incodato alla workstation con timestamp $t = t_0 + \text{tempo picking}$. Conseguenza: o si genera un evento ARRIVO\_POD\_WORKSTATION(p,w,r) oppure uno RIENTRO\_POD(p,r). \\
+    Attenzione: alla fine di un picking ad una workstation ci deve essere un controllo se l'ordine lì assegnato può cambiare il suo status da\emph{aperto} a \emph{completato}.
+    \item \textbf{RIENTRO\_POD(p,r)}: evento che ha come conseguenza il cambio di stato del pod, il cambio di stato e posizione del robot. \\
+    Attenzione: a seguito di questo evento bisogna guardare la possibilità di allocare altri task
+\end{itemize}
+
+Quali sono le \textbf{code} del sistema?
+\begin{enumerate}
+    \item \textbf{Coda degli ordini alle workstation}: ogni workstation ha una sua coda degli ordini la cui priorità è determinata da $x_{owt}$. \\
+    Ogni qualvolta inizia un servizio bisogna cabiare lo stato dell'ordine e della workstation e bisogna aggiungere elementi nella coda dei task.
+    \item \textbf{Coda dei pod alle workstation}: ogni workstation ha una sua coda deu pod la cui priorità è determinata da FIFO. \\
+    Ogni qualvolta inizia un nuovo servizio bisogna creare un evento FINE\_PICKING() e aggiornare lo stato dell'ordine presente alla workstation
+    \item \textbf{Coda dei task}: coda generale del sistema che viene servita dai robot. \\
+    Ogni qualvolta inizia un nuovo servizio bisgna creare un evento ARRIVO\_POD\_WORKSTATION() e cambiare lo stato del pod e del robot.
+\end{enumerate}
 
 
 
 
 \newpage
-\printbibliography
+\input{domandeeprob.tex}
 
+\newpage
+\printbibliography
 \end{document}
