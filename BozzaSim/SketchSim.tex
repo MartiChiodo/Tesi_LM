@@ -1,6 +1,8 @@
 \documentclass{article}
 
 \usepackage{sectsty}
+\usepackage{pdfpages}
+\usepackage{tikz}
 \usepackage{graphicx}
 \usepackage{csquotes}
 \usepackage{amsmath}
@@ -27,8 +29,6 @@ sorting=nyt
 \begin{document}
 \maketitle	
 
-Per questo abbozzo di simulatore prendo spunto dal software RAWSim-O \cite{Merschformann2017RAWSimOAS}.
-
 \subsection{Assunzioni}
 \begin{itemize}
     \item Viene modellizzato un sistema parts-to-picker: i pod mobili conteneti varie SKU ciascuno vengono portati a delle workstation fisse dai robot della fleet. Le SKU sono distribuite su vari pod.
@@ -38,6 +38,8 @@ Per questo abbozzo di simulatore prendo spunto dal software RAWSim-O \cite{Mersc
 
 
 \section{Input Information}
+Sezione ispirata da \cite{Merschformann2017RAWSimOAS}, articolo di presentazione del software RAWSim-O.
+
 Il simulatore avrà bisogno di alcune informazione iniziali al partire dalle quali creare l'istanza di simulazione. La sezione è impostata seguendo quanto fatto da \cite{Merschformann2017RAWSimOAS} adattandolo al nostro caso semplificato.
 
 \subsection{Layout specification}
@@ -47,7 +49,7 @@ A questo livello ci sono vari parametri da fissare:
     \item $P$ = numero di pod
     \item $R$ = numero di robot
     \item $W$ = numero di workstation
-    \item \cite{BOYSEN2017550} introduce anche un parametro $\xi \in \{0.005, 0.05, 0.2\}$ che indica la fraione di SKU per rack. In questo senso ogni pod contiene un numero di SKU compreso in  $[1, \lceil \xi P \rceil ]$.
+    \item \cite{BOYSEN2017550} introduce anche un parametro $\xi \in \{0.005, 0.05, 0.2\}$ che indica la frazione di SKU per pod. In questo senso ogni pod contiene un numero di SKU compreso in  $[1, \lceil \xi P \rceil ]$.
 \end{itemize}
 
 Una prima struttura dati necessaria è una matrice $N \times N$ ($P = N^2$) le cui entrate rapresentano il set di SKU contenute dal pod.
@@ -55,7 +57,7 @@ Una prima struttura dati necessaria è una matrice $N \times N$ ($P = N^2$) le c
 \subsection{Scenario Specification} \label{SS}
 In questa fase vengono specificati dei parametri che permettono la generazione degli ordini.
 
-Alcuni, tra cui \cite{Jiao2023} e \cite{Justkowiak2023} e il simulatore RAWSim-O stesso, seguono la logica di generazione degli ordini presentata da \cite{BOYSEN2017550}. Per ogni ordine si genera inizialmente il numero di item da una distribuzione uniforme discreta in $[1, 0.1*R+1]$ (per lui $R$ non è il numero di pod ma un valore inferiore che indica quanti pod sono necessari a soddisfare gli ordini, $R \in [5; 100]$) e poi vengono estratte le SKU. Ogni SKU è caratterizzata da un parametro di priorità (estratto da un esponenziale di parametro $\lambda = 0.5$) che determina la probabilità che venga estratta \[p_i = \frac{\text{parametro di priorità SKU i}}{\text{somma dei parametri di priorità di tutte le SKU}}\].
+Alcuni, tra cui \cite{Jiao2023} e \cite{Justkowiak2023} e il simulatore RAWSim-O stesso, seguono la logica di generazione degli ordini presentata da \cite{BOYSEN2017550}. Per ogni ordine si genera inizialmente il numero di item da una distribuzione uniforme discreta in $[1, 0.1*R+1]$ (per lui $R$ non è il numero di pod ma un valore inferiore che indica quanti pod sono necessari a soddisfare gli ordini, ed è fissato $R \in [5; 100]$) e poi vengono estratte le SKU. Ogni SKU è caratterizzata da un parametro di priorità (estratto da un esponenziale di parametro $\lambda = 0.5$) che determina la probabilità che venga estratta \[p_i = \frac{\text{parametro di priorità SKU i}}{\text{somma dei parametri di priorità di tutte le SKU}}\].
 
 
 \subsection{Controller Configuration}
@@ -71,10 +73,12 @@ La simulazione deve inoltre contenere un \textbf{emulatore del movimento dei pod
 Questo emulatore sarà descritto da uno stato contenete informazione sugli ordini in lavorazione nelle workstation, sui pod in movimentazione e sullo stato (busy o free) di un robot che sarà input dell'ottimizzatore quando verrà richiamato.
 
 
+\includepdf[pages=-]{sketch.pdf}
+
 
 
 \subsection{Emulatore del movimento dei robot}
-Questa è il modulo che a partire dallo scheduling ottenuto simula la vera e propria dinamica del sistema. \\
+Questa è il modulo che a partire dallo scheduling ottenuto simula la parte di movimentazione dei pod. \\
 Immagino che l'ottimizzatore consideri variabili decisionali del tipo
 \[
 \begin{aligned}
@@ -85,16 +89,18 @@ x_{owt} &=
 0 & \text{altrimenti}
 \end{cases} \\[1em]
 \text{pod-workstation-tempo} \quad 
-y_{pwt} &=
+y_{iopwt} &=
 \begin{cases}
-1 & \text{se allo step $t$ il pod $p$ visita la workstation $w$} \\
+1 & \text{se la SKU $i$ per l'ordine $o$ è già stata prelevata dal pod $p$ alla workstation $w$ allo step $t$} \\
 0 & \text{altrimenti}
 \end{cases}
 \end{aligned}
 \]
+(due delle variabili decisionali del modello matematico della Barnhart \cite{Barnhart2024}).
 
 
-Come definisco lo \textbf{stato}? Ad ogni istante devo tenere traccia di:
+\subsubsection{Come definisco lo \textbf{stato}?} 
+Ad ogni istante devo tenere traccia di:
 \begin{itemize}
     \item \textbf{Stato degli Ordini}: per ogni ordine devo sapere il suo stato (in attesa, aperto, completato) e le SKU mancanti per il completamento
     \item \textbf{Stato dei Pod}: per ogni pod devo sapere il suo stato (assegnato o no)
@@ -103,7 +109,10 @@ Come definisco lo \textbf{stato}? Ad ogni istante devo tenere traccia di:
     \item \textbf{Coda dei Task}: ogni task è definito dal pod che necessito, da un parametro di priorità (direi che dipende sia dalla distanza da percorrere che da quando mi serve in una workstation) e dalle destinazioni che devo raggiungere (penso ad una lista ordinata di workstation ad esempio). Questa coda ha come risorsa i robot (per semplicità un task viene allocato al robot libero più vicino).
 \end{itemize}
 
-Quali sono gli \textbf{eventi}?
+
+
+
+\subsubsection{Quali sono gli \textbf{eventi}?}
 \begin{itemize}
     \item \textbf{ARRIVO\_POD\_WORKSTATION(p,w,r)}: evento che si crea quando un task viene allocato con timestamp $t = t_0 + \text{tempo spostamento}$. Conseguenza: il pod viene incodato alla workstation
     \item \textbf{FINE\_PICKING(p,w,r)}: evento che si crea quando un pod è incodato alla workstation con timestamp $t = t_0 + \text{tempo picking}$. Conseguenza: o si genera un evento ARRIVO\_POD\_WORKSTATION(p,w,r) oppure uno RIENTRO\_POD(p,r). \\
@@ -112,7 +121,10 @@ Quali sono gli \textbf{eventi}?
     Attenzione: a seguito di questo evento bisogna guardare la possibilità di allocare altri task
 \end{itemize}
 
-Quali sono le \textbf{code} del sistema?
+
+
+
+\subsubsection{Quali sono le \textbf{code} del sistema?}
 \begin{enumerate}
     \item \textbf{Coda degli ordini alle workstation}: ogni workstation ha una sua coda degli ordini la cui priorità è determinata da $x_{owt}$. \\
     Ogni qualvolta inizia un servizio bisogna cabiare lo stato dell'ordine e della workstation e bisogna aggiungere elementi nella coda dei task.
