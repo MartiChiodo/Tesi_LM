@@ -73,7 +73,7 @@ La simulazione deve inoltre contenere un \textbf{emulatore del movimento dei pod
 Questo emulatore sarà descritto da uno stato contenete informazione sugli ordini in lavorazione nelle workstation, sui pod in movimentazione e sullo stato (busy o free) di un robot che sarà input dell'ottimizzatore quando verrà richiamato.
 
 
-\includepdf[pages=-]{sketch.pdf}
+\includepdf[pages=-]{ERGAMano.pdf}
 
 
 
@@ -102,36 +102,34 @@ y_{iopwt} &=
 \subsubsection{Come definisco lo \textbf{stato}?} 
 Ad ogni istante devo tenere traccia di:
 \begin{itemize}
-    \item \textbf{Stato degli Ordini}: per ogni ordine devo sapere il suo stato (in attesa, aperto, completato) e le SKU mancanti per il completamento
-    \item \textbf{Stato dei Pod}: per ogni pod devo sapere il suo stato (assegnato o no)
-    \item \textbf{Stato dei Robot}: per ogni robot devo sapere il suo stato (occupato o no) e la sua posizione se non occupato
-    \item \textbf{Stato delle Workstation}: per ogni workstation devo sapere la coda degli ordini (determinata da $x_{owt}$), il suo stato (occupata o meno) e la coda dei pod in attesa di processamento ($y_{pwt}$ mi determina la sequenza ideale ma essendo deterministici i travel time e i tempi di picking potrei avere dei ritardi)
-    \item \textbf{Coda dei Task}: ogni task è definito dal pod che necessito, da un parametro di priorità (direi che dipende sia dalla distanza da percorrere che da quando mi serve in una workstation) e dalle destinazioni che devo raggiungere (penso ad una lista ordinata di workstation ad esempio). Questa coda ha come risorsa i robot (per semplicità un task viene allocato al robot libero più vicino).
+    \item \textbf{Stato degli Ordini}: per ogni ordine devo sapere il suo stato (\emph{open}, \emph{waiting} o \emph{closed}) e le SKU mancanti per il suo completamento
+    \item \textbf{Stato dei Pod}: per ogni pod devo sapere se è in giro o al suo posto (\emph{busy} o \emph{idle})
+    \item \textbf{Stato dei Robot}: per ogni robot devo sapere il suo stato (\emph{idle} o \emph{busy}) e la sua posizione se \emph{idle} 
+    \item \textbf{Stato delle Workstation}: per ogni workstation devo sapere la coda degli ordini (determinata da $x_{owt}$), se c'è un ordine attualmente \emph{open} (\emph{empty} o \emph{occupied}), se c'è un'azione di picking già in corso (\emph{idle} o \emph{busy}) e la coda dei pod in attesa di processamento
+    \item \textbf{Coda dei Task}: coda prioritaria che ha come risorsa la flotta dei robot.
 \end{itemize}
 
-
+Un oggetto che dovrà essere definito è il \texttt{task} che dovrà contenere le seguenti informazioni: (1) il pod da prelevare, (2) la lista ordinata di workstation da visitare, (3) per ogni workstation visitata bisogna specificare quante SKU sono da prelevare e per quale ordine, (4) un parametro di priorità che mi dice quando è necessario che avvenga il task\footnote{Mi viene da pensare che possa essere comodo un trade-off tra quando il pod deve essere alla workstation secondo la soluzione dell'ottimizzatore e la distanza tra il pod e la workstation + deve dipendere da che ordini ho aperti nelle workstation?}. \\
+Tutte queste info sono deducibili da $x_{owt}$ e $y_{iopwt}$, e averle tutte assieme è vantaggioso per quando bisognerà aggiornare lo stato dell'emulatore.
 
 
 \subsubsection{Quali sono gli \textbf{eventi}?}
 \begin{itemize}
-    \item \textbf{ARRIVO\_POD\_WORKSTATION(p,w,r)}: evento che si crea quando un task viene allocato con timestamp $t = t_0 + \text{tempo spostamento}$. Conseguenza: il pod viene incodato alla workstation
-    \item \textbf{FINE\_PICKING(p,w,r)}: evento che si crea quando un pod è incodato alla workstation con timestamp $t = t_0 + \text{tempo picking}$. Conseguenza: o si genera un evento ARRIVO\_POD\_WORKSTATION(p,w,r) oppure uno RIENTRO\_POD(p,r). \\
-    Attenzione: alla fine di un picking ad una workstation ci deve essere un controllo se l'ordine lì assegnato può cambiare il suo status da\emph{aperto} a \emph{completato}.
-    \item \textbf{RIENTRO\_POD(p,r)}: evento che ha come conseguenza il cambio di stato del pod, il cambio di stato e posizione del robot. \\
-    Attenzione: a seguito di questo evento bisogna guardare la possibilità di allocare altri task
+    \item \texttt{release\_task}: eventi che si schedulano all'inizio dell'emulatore a istanti di tempo dati dal parametro di priorità dei task. Questo evento prende il task e lo aggiunge alla coda dei task rilasciati.
+    \item \texttt{start\_task} e \texttt{return\_pod} sono due eventi che indicano, rispettivamente, l'inizio e la fine di un task. Verranno quindi aggiornati gli stati relativi al pod e al robot coinvolto.
+    \item \texttt{arrival\_pod\_wst}, \texttt{start\_picking} e \texttt{end\_picking}\footnote{Ho separato i due eventi in modo da poter considerare un tempo di picking:\cite{BOYSEN2017550} considera questo tempo costante, mentre \cite{DeKoster2023} introduce una funzione del numero di SKU da prelevare e la loro dimensione.} sono gli eventi relativi alla movimentazione del pod. Questi eventi vanno ad aggiornare lo stato delle workstation e degli ordini coinvolti. 
+    \item \texttt{open\_order} e \texttt{close\_order} sono i due eventi che regolano quali ordini sono in servizio nelle workstation.
 \end{itemize}
 
-
+La relazione tra questi eventi è meglio visibile dal diagramma inserito nella pagine precedente.
 
 
 \subsubsection{Quali sono le \textbf{code} del sistema?}
+Nel sistema ci sono principalmente 3 code:
 \begin{enumerate}
-    \item \textbf{Coda degli ordini alle workstation}: ogni workstation ha una sua coda degli ordini la cui priorità è determinata da $x_{owt}$. \\
-    Ogni qualvolta inizia un servizio bisogna cabiare lo stato dell'ordine e della workstation e bisogna aggiungere elementi nella coda dei task.
-    \item \textbf{Coda dei pod alle workstation}: ogni workstation ha una sua coda deu pod la cui priorità è determinata da FIFO. \\
-    Ogni qualvolta inizia un nuovo servizio bisogna creare un evento FINE\_PICKING() e aggiornare lo stato dell'ordine presente alla workstation
-    \item \textbf{Coda dei task}: coda generale del sistema che viene servita dai robot. \\
-    Ogni qualvolta inizia un nuovo servizio bisgna creare un evento ARRIVO\_POD\_WORKSTATION() e cambiare lo stato del pod e del robot.
+    \item \textbf{Coda degli ordini alle workstation}: ogni workstation ha una sua coda degli ordini la cui priorità è determinata da $x_{owt}$.
+    \item \textbf{Coda dei pod alle workstation}: ogni workstation ha una sua coda dei pod la cui priorità è determinata da FIFO. 
+    \item \textbf{Coda dei task rilasciati}: in questa coda sono presenti i task già rilasciati ordinati secondo il loro fattore di priorità.
 \end{enumerate}
 
 
