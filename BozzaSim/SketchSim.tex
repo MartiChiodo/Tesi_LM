@@ -109,7 +109,7 @@ Ad ogni istante devo tenere traccia di:
     \item \textbf{Coda dei Task}: coda prioritaria che ha come risorsa la flotta dei robot.
 \end{itemize}
 
-Un oggetto che dovrà essere definito è il \texttt{task} che dovrà contenere le seguenti informazioni: (1) il pod da prelevare, (2) la lista ordinata di workstation da visitare, (3) per ogni workstation visitata bisogna specificare quante SKU sono da prelevare e per quale ordine, (4) un parametro di priorità che mi dice quando è necessario che avvenga il task\footnote{Mi viene da pensare che possa essere comodo un trade-off tra quando il pod deve essere alla workstation secondo la soluzione dell'ottimizzatore e la distanza tra il pod e la workstation + deve dipendere da che ordini ho aperti nelle workstation?}. \\
+Un oggetto che dovrà essere definito è il \texttt{task} che dovrà contenere le seguenti informazioni: (1) il pod da prelevare, (2) la lista ordinata di workstation da visitare, (3) per ogni workstation visitata bisogna specificare quante SKU sono da prelevare e per quale ordine, (4) un parametro di priorità che mi dice quando è necessario che avvenga il task\footnote{Mi viene da pensare che possa essere comodo un trade-off tra quando il pod deve essere alla workstation secondo la soluzione dell'ottimizzatore e la distanza tra il pod e la workstation + deve dipendere da che ordini ho aperti nelle workstation?}. 
 Tutte queste info sono deducibili da $x_{owt}$ e $y_{iopwt}$, e averle tutte assieme è vantaggioso per quando bisognerà aggiornare lo stato dell'emulatore.
 
 
@@ -121,7 +121,8 @@ Tutte queste info sono deducibili da $x_{owt}$ e $y_{iopwt}$, e averle tutte ass
     \item \texttt{open\_order} e \texttt{close\_order} sono i due eventi che regolano quali ordini sono in servizio nelle workstation.
 \end{itemize}
 
-La relazione tra questi eventi è meglio visibile dal diagramma inserito nella pagine precedente.
+La relazione tra questi eventi è meglio visibile dal diagramma inserito nella pagine precedente.  \\
+L'evento \texttt{start\_task} è triggerato dalla presenza di un released task non ancora allocato e dalla presenza di almeno un robot in stato \emph{idle}, si può quindi inserire un blochetto di ottimizzazione che permette di scegliere il robot a cui allocare il task.\footnote{Ottimizzo con policy \enquote{assegno il task al robot \emph{idle} più vicino}.}
 
 
 \subsubsection{Quali sono le \textbf{code} del sistema?}
