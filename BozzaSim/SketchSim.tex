@@ -52,7 +52,10 @@ A questo livello ci sono vari parametri da fissare:
     \item \cite{BOYSEN2017550} introduce anche un parametro $\xi \in \{0.005, 0.05, 0.2\}$ che indica la frazione di SKU per pod. In questo senso ogni pod contiene un numero di SKU compreso in  $[1, \lceil \xi P \rceil ]$.
 \end{itemize}
 
-Una prima struttura dati necessaria è una matrice $N \times N$ ($P = N^2$) le cui entrate rapresentano il set di SKU contenute dal pod.
+Una prima struttura dati necessaria è un array che contiene le info riguardanti le SKU contenute in un pod.
+Potrebbe essere conveniete al posto di avere una matrice pensare ad una biezione tra l'id del pod e la sua posizione nella griglia. \\
+Può anche essere utile precalcolarsi le distanze di ciascun pod dalle workstation.
+
 
 \subsection{Scenario Specification} \label{SS}
 In questa fase vengono specificati dei parametri che permettono la generazione degli ordini.
