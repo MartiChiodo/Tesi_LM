@@ -72,8 +72,18 @@ Prima di entrare nei dettagli tecnici della simulazione, descrivo brevemente la 
 
 Gli ordini arrivano in modo continuo (per semplicità assumeremo tempi di interarrivo costanti) e vanno ad inserirsi nel \textbf{backlog degli ordini}. A intervalli regolari viene eseguito un ottimizzatore che, considerando solo un sottoinsieme di ordini presenti nel backlog, determina l'assegnazione ordini-workstation-tempo e la sequenza con cui i pod devono visitare le diverse workstation.
 
-La simulazione deve inoltre contenere un \textbf{emulatore del movimento dei pod}, ilcui compito è di prendere lo scheduling generato dall'ottimizzatore e simulare i movimenti dei robot incaricati di trasportare i pod verso le workstation assegnate. \\
-Questo emulatore sarà descritto da uno stato contenete informazione sugli ordini in lavorazione nelle workstation, sui pod in movimentazione e sullo stato (busy o free) di un robot che sarà input dell'ottimizzatore quando verrà richiamato.
+La simulazione deve inoltre contenere un \textbf{emulatore del movimento dei pod}, ilcui compito è di prendere lo scheduling generato dall'ottimizzatore e simulare i movimenti dei robot incaricati di trasportare i pod verso le workstation assegnate. 
+
+Si noti che l'ottimizzatore attinge allo stato dell'emulatore per determinare i vincoli, mentre l'emulatore attinge all'output dell'ottimizzazione per definire i task.
+
+\subsection{Stato del simulatore esterno}
+Il simulatore esterno dovrà tracciare le seguenti informazioni:
+\begin{enumerate}
+    \item \textbf{Backlog degli ordini}: struttura in cui vengono memorizzati gli ordini entrati nel sistema e non ancora considerati nell'ottimizzazione.
+    \item \textbf{Stato degli ordini}: struttura dati in cui si va a specificare lo stato degli oridni già considerati dall'ottimizzatore. Questo dato è necessario sia all'ottimizzatore (alcuni vincoli verranno da qui, ad esempio per considerare gli oirdini già aperti alle workstation) sia all'emulatore che ne aggiornerà anche il valore.
+    \item \textbf{Posizione dei robot}: struttura dati che è sia input che output dell'emulatore.
+    \item \textbf{Coda dei task}: questa struttura è output dell'ottimizzatore e input dell'emulatore.
+\end{enumerate}
 
 
 \includepdf[pages=-]{ERGAMano.pdf}
@@ -109,7 +119,7 @@ Ad ogni istante devo tenere traccia di:
     \item \textbf{Stato dei Pod}: per ogni pod devo sapere se è in giro o al suo posto (\emph{busy} o \emph{idle})
     \item \textbf{Stato dei Robot}: per ogni robot devo sapere il suo stato (\emph{idle} o \emph{busy}) e la sua posizione se \emph{idle} 
     \item \textbf{Stato delle Workstation}: per ogni workstation devo sapere la coda degli ordini (determinata da $x_{owt}$), se c'è un ordine attualmente \emph{open} (\emph{empty} o \emph{occupied}), se c'è un'azione di picking già in corso (\emph{idle} o \emph{busy}) e la coda dei pod in attesa di processamento
-    \item \textbf{Coda dei Task}: coda prioritaria che ha come risorsa la flotta dei robot.
+    \item \textbf{Coda dei Task Rilasciati}: coda prioritaria che ha come risorsa la flotta dei robot. All'inizio di ogni simulazione performata dall'emulatore questa coda sarà vuota, verrà man mano riempita quando i task dalla \emph{coda dei task} verrano rilasciati.
 \end{itemize}
 
 Un oggetto che dovrà essere definito è il \texttt{task} che dovrà contenere le seguenti informazioni: (1) il pod da prelevare, (2) la lista ordinata di workstation da visitare, (3) per ogni workstation visitata bisogna specificare quante SKU sono da prelevare e per quale ordine, (4) un parametro di priorità che mi dice quando è necessario che avvenga il task\footnote{Mi viene da pensare che possa essere comodo un trade-off tra quando il pod deve essere alla workstation secondo la soluzione dell'ottimizzatore e la distanza tra il pod e la workstation + deve dipendere da che ordini ho aperti nelle workstation?}. 
