@@ -1,0 +1,7 @@
+mainSim.py      ← avvio, lettura config, lancio simulazione
+config.py       ← tutti i parametri numerici
+src/simulator.py    ← loop esterno (da scrivere in fase 2)
+src/emulator.py     ← loop interno (da scrivere in fase 4)
+src/state.py        ← strutture dati ✅
+src/enums.py        ← stati ✅
+src/events.py       ← event queue ✅
