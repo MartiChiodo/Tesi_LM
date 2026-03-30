@@ -3,8 +3,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-# All event kinds recognised by the simulator
-EVENT_KINDS = frozenset({
+# All event types recognised by the simulator
+EVENT_TYPES = frozenset({
     # --- Outer simulator ---
     "arrival_order",   # a new order enters the backlog
     "run_optimizer",   # fires every Δt_opt
@@ -27,16 +27,16 @@ class Event:
     A single DES event.
 
     time    — simulation time at which the event occurs
-    kind    — event type string (must be in EVENT_KINDS)
-    payload — arbitrary data needed by the event handler (e.g. pod_id, order_id)
+    type    — event type string (must be in EVENT_KINDS)
+    info — arbitrary data needed by the event handler (e.g. pod_id, order_id)
     """
     time:    float
-    kind:    str
-    payload: Any = None
+    type:    str
+    info: Any = None
 
     def __post_init__(self) -> None:
-        if self.kind not in EVENT_KINDS:
-            raise ValueError(f"Unknown event kind: '{self.kind}'")
+        if self.type not in EVENT_TYPES:
+            raise ValueError(f"Unknown event tyoe: '{self.type}'")
 
 
 class EventQueue:
@@ -50,9 +50,9 @@ class EventQueue:
         self._heap: list[tuple[float, int, Event]] = []
         self._counter: int = 0
 
-    def schedule(self, time: float, kind: str, payload: Any = None) -> Event:
+    def schedule(self, time: float, type: str, info: Any = None) -> Event:
         """Create an event and push it onto the queue. Returns the Event."""
-        event = Event(time=time, kind=kind, payload=payload)
+        event = Event(time=time, type=type, info=info)
         heapq.heappush(self._heap, (time, self._counter, event))
         self._counter += 1
         return event

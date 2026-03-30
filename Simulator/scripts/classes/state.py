@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from enums import OrderStatus, RobotStatus, PodStatus, WorkstationPickingStatus
+from Simulator.scripts.classes.enums import OrderStatus, RobotStatus, PodStatus, WorkstationPickingStatus
 
 ### MISSIONS-related classes
 
@@ -13,7 +13,7 @@ class Visit:
     workstation_id: int
     order_id:       int
     sku_list:       list[int]  # SKUs to pick at this stop
-    t_desired:      float      # time at which the optimizer wants the pod to arrive
+    t_desired:      float      # time step at which the optimizer wants the pod to arrive
 
 
 @dataclass
@@ -35,28 +35,28 @@ class Task:
 # Updated by both the optimizer and the emulator.
 
 @dataclass
-class OrderState:
+class Order:
     """
     All information the outer simulator tracks about a single order.
     """
     order_id:     int
     sku_required: list[int]             # SKUs needed to complete the order
-    status:       OrderStatus = OrderStatus.BACKLOG
     assigned_ws:  int | None  # workstation assigned by the optimizer
+    status:       OrderStatus = OrderStatus.BACKLOG
 
 
 @dataclass
 class SimulatorState:
     """
     Global state of the outer simulator.
-     — backlog          : orders that have arrived but not yet been optimized
-     — orders           : orders already considered by the optimizer
-     — robot positions  : last known position of every robot (grid cell)
-     — missions         : task queue produced by the optimizer, consumed by the emulator
+     — backlog_orders         : orders that have arrived but not yet been optimized
+     — already_opt_orders     : orders already considered by the optimizer
+     — robot_positions        : last known position of every robot (grid cell)
+     — mission_queue          : task queue produced by the optimizer, consumed by the emulator
     """
 
-    backlog: list[OrderState] = field(default_factory=list)
-    orders: dict[int, OrderState] = field(default_factory=dict)
+    backlog_orders: list[Order]
+    already_opt_orders: list[Order] 
     robot_positions: dict[int, tuple[int, int]] = field(default_factory=dict)
     mission_queue: list[Task] = field(default_factory=list)
 
@@ -67,25 +67,25 @@ class SimulatorState:
 # Tracks fine-grained movement and picking state.
 
 @dataclass
-class RobotState:
+class Robot:
     """Fine-grained state of a single robot inside the emulator."""
     robot_id:        int
-    status:          RobotStatus = RobotStatus.IDLE
-    position:        tuple[int, int] = (0, 0)   # current grid cell
+    position:        tuple[int, int] 
     current_task_id: int | None        # task being executed, if BUSY
+    status:          RobotStatus = RobotStatus.IDLE
 
 
 @dataclass
-class PodState:
+class Pod:
     """Fine-grained state of a single pod inside the emulator."""
     pod_id:        int
-    status:        PodStatus = PodStatus.IDLE
-    home_position: tuple[int, int] = (0, 0)     # resting cell in the grid
+    home_position: tuple[int, int] 
     sku_ids:       list[int] = field(default_factory=list)  # SKUs stored on this pod
+    status:        PodStatus = PodStatus.IDLE
 
 
 @dataclass
-class WorkstationState:
+class Workstation:
     """
     Fine-grained state of a single workstation inside the emulator.
 
@@ -96,15 +96,16 @@ class WorkstationState:
     order_queue      — sequence of order_ids to open next (set by the optimizer)
     pending_missions — missions that could not be released because pod_queue was full
     """
-    workstation_id:   int
-    capacity:         int   # M: max simultaneous open orders
-    queue_capacity:   int   # max pods waiting in pod_queue
+    workstation_id:      int
+    openorder_capacity:  int   # M: max simultaneous open orders
+    podqueue_capacity:   int   # max pods waiting in pod_queue
+    position:            tuple[int, int]
 
     open_orders:      list[int] = field(default_factory=list)
-    picking_status:   WorkstationPickingStatus = WorkstationPickingStatus.IDLE
     pod_queue:        list[int] = field(default_factory=list)   # pod_ids waiting
     order_queue:      list[int] = field(default_factory=list)   # order_ids to open
     pending_missions: list[Task] = field(default_factory=list)
+    picking_status:   WorkstationPickingStatus = WorkstationPickingStatus.IDLE
 
 
     # Helpful methods 
@@ -146,12 +147,12 @@ class EmulatorState:
     active_tasks   — fast lookup for tasks currently in execution
                      key: pod_id  (one active task per pod at most)
     """
-    robots:        dict[int, RobotState] = field(default_factory=dict)
-    pods:          dict[int, PodState] = field(default_factory=dict)
-    workstations:  dict[int, WorkstationState] = field(default_factory=dict)
+    robots:        list[Robot] 
+    pods:          list[Pod] 
+    workstations:  list[Workstation] 
 
     # min-heap: (priority, tie_breaker, Task)
-    released_tasks: list = field(default_factory=list)
+    released_tasks: list[Task]
 
     # key: pod_id
-    active_tasks: dict[int, Task] = field(default_factory=dict)
+    active_tasks: list[Task] 
