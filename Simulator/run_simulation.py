@@ -44,6 +44,7 @@ def main():
     ### TODO
     # SKU distribution among pods
     # event_handler.py con le funzioni per processare gli eventi in base al tipo
+    # togliere gli append ma creare le liste come [None]*Num_elem
 
     ### SIMULATION
     # sim = Simulator(config)
