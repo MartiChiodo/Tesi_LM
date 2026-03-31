@@ -3,10 +3,10 @@
 
 
 # Layout 
-NUM_PODS         = 12
+NUM_PODS         = 100
 NUM_SKUS         = 10
 NUM_ROBOTS       = 10
-NUM_WORKSTATIONS = 4
+NUM_WORKSTATIONS = 10
 
 GRID_ROWS = 10          # number of rows in the warehouse grid
 GRID_COLS = 10          # number of columns in the warehouse grid

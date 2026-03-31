@@ -1,5 +1,5 @@
 # Ignore venv folder
-.venv/
+TesiEnv/
 
 ## Core latex/pdflatex auxiliary files:
 *.aux

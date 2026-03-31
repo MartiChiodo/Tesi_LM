@@ -1,0 +1,61 @@
+Tesi_LM Project – Simulator Folder Overview
+===========================================
+
+
+Tesi_LM/
+├── Simulator/
+|   ├── logs.log                   # Log file
+│   ├── run_simulation.py          # Entry point: reads config, initializes warehouse, launches simulation
+│   ├── config.py                  # Numeric parameters for the simulation scenario
+│   ├── output/                    # Optional folder for saved plots, logs, etc.
+│   │   └── plots/
+│   └── scripts/
+│       ├── core/
+│       │   ├── state.py           # Data structures: Pod, Robot, Workstation, Tasks, EmulatorState
+│       │   ├── enums.py           # Enumerations: OrderStatus, RobotStatus, PodStatus, etc.
+│       │   └── events.py          # Discrete Event Simulation engine: EventType, Event, EventQueue
+│       └── layout_generation.py   # Warehouse layout generation & plotting
+
+
+
+run_simulation.py
+-----------------
+Entry point of the simulation. 
+- Reads configuration parameters from config.py
+- Initializes the warehouse layout (pods and workstations)
+- Prepares the simulation scenario and optionally runs the simulation
+
+config.py
+---------
+Holds all numeric configuration parameters for the simulation:
+- Number of pods, SKUs, robots, workstations
+- Warehouse grid dimensions
+- Capacities for workstations and pods
+- Other scenario parameters
+
+scripts/core/state.py
+--------------------
+Defines all the main data structures for the simulator and emulator:
+- Visit, Task: describe missions for pods
+- Order, SimulatorState: track global simulation state
+- Robot, Pod, Workstation, EmulatorState: fine-grained state used by the emulator
+
+scripts/core/enums.py
+---------------------
+Enumerations for discrete states in the simulation:
+- OrderStatus, RobotStatus, PodStatus, WorkstationPickingStatus
+
+scripts/core/events.py
+----------------------
+Discrete Event Simulation (DES) engine:
+- EventType: enumeration of all possible simulation events
+- Event: a single simulation event with timestamp and payload
+- EventQueue: priority queue for scheduling and retrieving events
+
+scripts/layout_generation.py
+----------------------------
+Warehouse layout generation and visualization:
+- Initializes pod positions on a grid with spacing and roads
+- Generates workstations along warehouse perimeter
+- plot_warehouse(): plots or saves the warehouse layout
+- Handles adaptive positioning based on grid size, margins, and roads
