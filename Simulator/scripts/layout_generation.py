@@ -55,7 +55,7 @@ def initialize_warehouse(
 
 
     ### Pod Generation
-    pods: list[Pod] = []
+    pods = [None]*num_pods
 
     for col in range(grid_cols):
         for row in range(grid_rows):
@@ -72,7 +72,7 @@ def initialize_warehouse(
                 home_position=(x_pod, y_pod),
                 sku_ids=[] # TODO
             )
-            pods.append(pod)
+            pods[pod_id] = pod
 
 
 
@@ -83,7 +83,7 @@ def initialize_warehouse(
 
 
     ### Robot Generation
-    robots: list[Robot] = []
+    robots = [None]*num_robots
 
     assigned_pos = set(tuple[int, int])
     for id_r in range(num_robots):
@@ -100,8 +100,7 @@ def initialize_warehouse(
             current_task_id = None,
             status = RobotStatus.IDLE
         )
-
-        robots.append(r)
+        robots[id_r] = r
 
             
 
@@ -141,7 +140,7 @@ def generate_workstations_adapt(
     list[Workstation]  Generated workstations.
     """
 
-    workstations: list[Workstation] = []
+    workstations = [None]*num_ws
 
     # CASE 1: Symmetric placement on bottom side
 
@@ -151,12 +150,12 @@ def generate_workstations_adapt(
         center_x = X // 2
         start_offset = -(num_ws // 2) * MIN_SPACING
 
-        for i in range(num_ws):
+        for id_ws in range(num_ws):
             x = center_x + start_offset + i * MIN_SPACING
             y = 0
 
             ws = Workstation(
-                workstation_id=i,
+                workstation_id=id_ws,
                 openorder_capacity=ws_order_cap,
                 podqueue_capacity=ws_pod_cap,
                 position=(x, y),
@@ -166,8 +165,7 @@ def generate_workstations_adapt(
                 order_queue=[],
                 pending_missions=[]
             )
-
-            workstations.append(ws)
+            workstations[id_ws] = ws
 
         return workstations
 
@@ -176,9 +174,9 @@ def generate_workstations_adapt(
 
     x_ws, y_ws = X // 2, 0
 
-    for ws_id in range(num_ws):
+    for id_ws in range(num_ws):
         ws = Workstation(
-            workstation_id=ws_id,
+            workstation_id=id_ws,
             openorder_capacity=ws_order_cap,
             podqueue_capacity=ws_pod_cap,
             position=(x_ws, y_ws),
@@ -188,8 +186,7 @@ def generate_workstations_adapt(
             order_queue=[],
             pending_missions=[]
         )
-
-        workstations.append(ws)
+        workstations[id_ws] = ws
 
         # Move anti-clockwise
         if y_ws == 0:
