@@ -50,6 +50,8 @@ def main():
     # Initialize SimulatorState and EmulatorState
     # Schedule initial events (ARRIVAL_ORDER, RUN_OPTIMIZER)
     # Run DES loop
+    # event_handler.py con le funzioni per processare gli eventi in base al tipo
+    # togliere gli append ma creare le liste come [None]*Num_elem
 
     ### SIMULATION
     # sim = Simulator(warehouse, config)
