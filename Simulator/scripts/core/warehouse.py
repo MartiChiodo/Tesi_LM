@@ -80,7 +80,7 @@ class Warehouse:
         self.Y = grid_cols + ((grid_cols - 1) // 2) + 2 * MARGIN - 1
 
         # Entity generation
-        self.pods = self._generate_pods(grid_rows, grid_cols)
+        self.pods = self._generate_pods(num_pods, grid_rows, grid_cols)
         self.workstations = self._generate_workstations(num_workstations, ws_order_cap, ws_pod_cap)
         self.robots = self._generate_robots(num_robots)
 
@@ -88,14 +88,14 @@ class Warehouse:
 
     #  Private generation methods
 
-    def _generate_pods(self, grid_rows: int, grid_cols: int) -> list[Pod]:
+    def _generate_pods(self, num_pods: int, grid_rows: int, grid_cols: int) -> list[Pod]:
         """
         Place pods on the storage grid.
 
         Pod IDs increase left-to-right along each row, then top-to-bottom.
         A road column is inserted every 2 pod columns; a road row every 2 pod rows.
         """
-        pods: list[Pod] = []
+        pods = [None]*num_pods
 
         for col in range(grid_cols):
             for row in range(grid_rows):
@@ -104,12 +104,12 @@ class Warehouse:
                 x_pod = MARGIN + row + (row // 2)       # vertical roads every 2 pods
                 y_pod = self.Y - MARGIN - col - (col // 2)  # horizontal roads, top-down
 
-                pods.append(Pod(
-                    pod_id=pod_id,
-                    status=PodStatus.IDLE,
-                    home_position=(x_pod, y_pod),
-                    sku_ids=[],   # TODO: SKU distribution
-                ))
+                pods[pod_id] = Pod(
+                        pod_id=pod_id,
+                        status=PodStatus.IDLE,
+                        home_position=(x_pod, y_pod),
+                        sku_ids=[],   # TODO: SKU distribution
+                    )
 
         return pods
 
@@ -127,7 +127,7 @@ class Warehouse:
         they are placed there. Otherwise they are distributed anti-clockwise
         around the full perimeter.
         """
-        workstations: list[Workstation] = []
+        workstations = [None]*num_ws
 
         def make_ws(ws_id: int, x: int, y: int) -> Workstation:
             return Workstation(
@@ -149,9 +149,9 @@ class Warehouse:
             center_x    = self.X // 2
             start_offset = -(num_ws // 2) * MIN_SPACING
 
-            for i in range(num_ws):
-                x = center_x + start_offset + i * MIN_SPACING
-                workstations.append(make_ws(i, x, 0))
+            for ws_id in range(num_ws):
+                x = center_x + start_offset + ws_id * MIN_SPACING
+                workstations[ws_id] = make_ws(ws_id, x, 0)
 
             return workstations
 
@@ -159,7 +159,7 @@ class Warehouse:
         x_ws, y_ws = self.X // 2, 0
 
         for ws_id in range(num_ws):
-            workstations.append(make_ws(ws_id, x_ws, y_ws))
+            workstations[ws_id] = make_ws(ws_id, x_ws, y_ws)
 
             # Advance anti-clockwise
             if y_ws == 0:
@@ -199,7 +199,7 @@ class Warehouse:
         Assign random non-overlapping starting positions to robots.
         Positions are drawn uniformly from the interior of the warehouse.
         """
-        robots: list[Robot] = []
+        robots = [None]*num_robots
         assigned_pos = set()   
 
         for robot_id in range(num_robots):
@@ -208,12 +208,12 @@ class Warehouse:
                 x_r, y_r = randint(1, self.X - 1), randint(1, self.Y - 1)
             assigned_pos.add((x_r, y_r))
 
-            robots.append(Robot(
-                robot_id=robot_id,
-                position=(x_r, y_r),
-                current_task_id=None,
-                status=RobotStatus.IDLE,
-            ))
+            robots[robot_id] = Robot(
+                    robot_id=robot_id,
+                    position=(x_r, y_r),
+                    current_task_id=None,
+                    status=RobotStatus.IDLE,
+                )
 
         return robots
 
@@ -351,7 +351,7 @@ class Warehouse:
     def __repr__(self) -> str:
         return (
             f"Warehouse("
-            f"grid={self.grid_rows}x{self.grid_cols}, "
+            f"pod grid={self.grid_rows}x{self.grid_cols}, "
             f"size={self.X}x{self.Y}, "
             f"pods={len(self.pods)}, "
             f"workstations={len(self.workstations)}, "

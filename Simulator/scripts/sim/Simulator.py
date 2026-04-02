@@ -64,8 +64,12 @@ class Simulator:
             event_to_process = self.event_queue.pop()
             self.clock = event_to_process.time
 
-            logging.info(f"CLOCK = {self.clock:.4f} --> processing {event_to_process.type}")
-
+            logging.info(
+                "CLOCK = %.4f --> processing %s",
+                self.clock,
+                event_to_process.type.name
+                )
+            
             # Process event
             self._process_event(event_to_process, dispatch)
 

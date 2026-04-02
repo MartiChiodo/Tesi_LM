@@ -8,8 +8,8 @@ NUM_SKUS         = 10
 NUM_ROBOTS       = 10
 NUM_WORKSTATIONS = 10
 
-GRID_ROWS = 10        # number of rows in the warehouse grid
-GRID_COLS = 10        # number of columns in the warehouse grid
+GRID_ROWS = 10       # number of rows in the warehouse grid
+GRID_COLS = 10       # number of columns in the warehouse grid
 
 ROBOT_SPEED = 1.0       # cells per minute
 

@@ -42,7 +42,7 @@ def main():
 
     logging.info(f"Warehouse initialized: {warehouse}")
 
-    # --- Visualization ---
+    # Visualization
     warehouse.plot(save=True)
 
     # --- TODO ---
