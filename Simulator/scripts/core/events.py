@@ -4,7 +4,6 @@ from typing import Any
 from enum import Enum
 
 
-
 ### EVENTS
 
 class EventType(Enum):
@@ -44,7 +43,7 @@ class Event:
     """
     time: float
     type: EventType
-    info: Any = None
+    info: Any = None    
 
 
 

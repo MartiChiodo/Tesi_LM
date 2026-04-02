@@ -48,7 +48,7 @@ class Task:
 
 
 
-### OUTER SIMULATOR STATE
+### OUTER SIMULATOR RELATED CLASSES
 # Persistent across the entire simulation.
 # Updated by both optimizer and emulator.
 
@@ -70,28 +70,11 @@ class Order:
     status: OrderStatus = OrderStatus.BACKLOG
 
 
-@dataclass
-class SimulatorState:
-    """
-    Global state of the outer simulator.
-
-    Attributes
-    ----------
-    backlog_orders :       Orders that have arrived but are not yet processed by the optimizer.
-    processed_orders :     Orders already processed by the optimizer.
-    robot_positions :      Last known positions of robots (robot_id -> (x, y)).
-    mission_queue :        Queue of tasks produced by the optimizer and consumed by the emulator.
-    """
-    backlog_orders: list[Order]
-    processed_orders: list[Order]
-    robot_positions: dict[int, tuple[int, int]] = field(default_factory=dict)
-    mission_queue: list[Task] = field(default_factory=list)
 
 
 
 
-### EMULATOR STATE
-# Re-initialized at every optimizer call.
+### EMULATOR RELATED CLASSES
 # Tracks detailed execution state.
 
 @dataclass
@@ -211,23 +194,3 @@ class Workstation:
         return None
 
 
-@dataclass
-class EmulatorState:
-    """
-    Full execution state of the emulator.
-
-    Attributes
-    ----------
-    robots : list[Robot]              List of all robots.
-    pods : list[Pod]                  List of all pods.
-    workstations : list[Workstation]  List of all workstations.
-
-    released_tasks : list[Task]       Min-heap of tasks ready for execution (priority queue).
-    active_tasks : dict[int, Task]    Mapping from pod_id to currently active task.
-    """
-    robots: list[Robot]
-    pods: list[Pod]
-    workstations: list[Workstation]
-
-    released_tasks: list[Task]
-    active_tasks: dict[int, Task]
