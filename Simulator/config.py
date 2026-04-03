@@ -1,35 +1,37 @@
 ### SIMULATION CONFIGURATION
-# All parameters are centralised here and imported by mainSim.py
+# All parameters are centralised here and imported by run_simulation.py
 
 
-# Layout 
+# Warehouse Layout 
 NUM_PODS         = 100
 NUM_SKUS         = 10
 NUM_ROBOTS       = 10
 NUM_WORKSTATIONS = 10
 
-GRID_ROWS = 10       # number of rows in the warehouse grid
-GRID_COLS = 10       # number of columns in the warehouse grid
+GRID_ROWS = 10       # number of rows for the pod grid
+GRID_COLS = 10       # number of columns for the pod grid
 
-ROBOT_SPEED = 1.0       # cells per minute
+ROBOT_SPEED = 30.0       # cells per minute (1 m/s)
 
 
 # Workstations
 WS_ORDER_CAPACITY = 1   # M: max simultaneous open orders per workstation
-WS_QUEUE_CAPACITY = 3   # max pods waiting in pod_queue per workstation
+WS_QUEUE_CAPACITY = 3   # max pods waiting in pod_queue per workstation 
+                        # (more of an indication on how many active tasks reòlated to each ws simultaneosly)
 
 
-# SKU distribution (Boysen et al. 2017) 
-XI = 0.05               # fraction of SKUs per pod (ξ ∈ {0.005, 0.05, 0.2})
+# Parameters for order generation (Barnhart et al. 2024 approach)
+PROB_1_ITEM_ORDER = 0.5
+GEO_DIST_PARAM_ORDER = 0.65      # takes value in {0.25, 0.35, 0.45, 0.65}
+INTERRARIVAL_TIME_ORDER = 0.34   # equivalent of 175 orders per hour (unit time : minutes)
 
-
-# Order generation 
-INTERARRIVAL_TIME = 5.0  # minutes between consecutive order arrivals (constant for now)
 
 
 # Simulation control 
-TIME_HORIZON  = 60 * 24  # total simulation time in minutes (1 day)
+TIME_HORIZON  = 60   # total simulation time in minutes (1 day)
 DELTA_T_OPT   = 15       # optimizer is called every DELTA_T_OPT minutes
+
+
 
 
 # --- Stochasticity ---

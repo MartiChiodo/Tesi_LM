@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from Simulator.scripts.core.enums import OrderStatus, RobotStatus, PodStatus, WorkstationPickingStatus
+from Simulator.scripts.core.events import PriorityQueue
 
 
 
@@ -60,11 +61,14 @@ class Order:
     Parameters
     ----------
     order_id : int              Unique identifier of the order.
+    num_skus: int               Number of skus required by the order.
     sku_required : list[int]    List of SKUs required to complete the order.
     assigned_ws : int | None    Workstation assigned by the optimizer (None if not yet assigned).
     status : OrderStatus        Current lifecycle status of the order.
     """
     order_id: int
+    arrival_time : float
+    num_skus: int
     sku_required: list[int]
     assigned_ws: int | None
     status: OrderStatus = OrderStatus.BACKLOG
@@ -125,7 +129,7 @@ class Workstation:
     podqueue_capacity : int     Maximum number of pods allowed in the waiting queue.
     position : tuple[int, int]  Grid position of the workstation.
 
-    open_orders : list[int]                    Orders currently being processed.
+    open_orders : set(int)                     Orders currently being processed.
     pod_queue : list[int]                      Pods waiting at the workstation (excluding the active one).
     order_queue : list[int]                    Orders scheduled to be opened next.
     pending_missions : list[Task]              Tasks that could not be released due to capacity constraints.
@@ -136,7 +140,7 @@ class Workstation:
     podqueue_capacity: int
     position: tuple[int, int]
 
-    open_orders: list[int] = field(default_factory=list)
+    open_orders: set[int] = field(default_factory=set)
     pod_queue: list[int] = field(default_factory=list)
     order_queue: list[int] = field(default_factory=list)
     pending_missions: list[Task] = field(default_factory=list)

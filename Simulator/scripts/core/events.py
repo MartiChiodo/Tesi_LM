@@ -1,8 +1,7 @@
 import heapq
 from dataclasses import dataclass
-from typing import Any
-from enum import Enum
-
+from typing import Any, Callable, Generic, TypeVar
+from enum import Enum, auto
 
 ### EVENTS
 
@@ -12,18 +11,18 @@ class EventType(Enum):
     """
 
     # --- Outer simulator ---
-    ARRIVAL_ORDER = "arrival_order"
-    RUN_OPTIMIZER = "run_optimizer"
+    ARRIVAL_ORDER = auto()
+    RUN_OPTIMIZER = auto()
 
     # --- Emulator ---
-    RELEASE_TASK = "release_task"
-    START_TASK = "start_task"
-    ARRIVAL_POD_WST = "arrival_pod_wst"
-    OPEN_ORDER = "open_order"
-    START_PICKING = "start_picking"
-    END_PICKING = "end_picking"
-    CLOSE_ORDER = "close_order"
-    RETURN_POD = "return_pod"
+    RELEASE_TASK = auto()
+    START_TASK = auto()
+    ARRIVAL_POD_WST = auto()
+    OPEN_ORDER = auto()
+    START_PICKING = auto()
+    END_PICKING = auto()
+    CLOSE_ORDER = auto()
+    RETURN_POD = auto()
 
     # Utilities
     def __str__(self) -> str:
@@ -47,79 +46,107 @@ class Event:
 
 
 
-### EVENT QUEUE
+### HEAP QUEUE - used for event queue and order backlog
 
-class EventQueue:
+T = TypeVar("T")
+
+class PriorityQueue(Generic[T]):
     """
-    Priority queue for DES events ordered by simulation time.
+    Generic min-heap priority queue with stable ordering.
 
-    Uses a monotonic counter to break ties and avoid direct comparison
-    between Event objects.
+    Uses a monotonic counter to break ties, avoiding direct comparison
+    between items. Supports any type T via a key function.
+
+    Parameters
+    ----------
+    key : Callable[[T], float], optional
+        Function mapping an item to its priority (lower = higher priority).
+        Defaults to the identity function, so T must support float conversion
+        or direct comparison if omitted.
     """
 
-    def __init__(self) -> None:
-        self._heap: list[tuple[float, int, Event]] = []
+    def __init__(self, key: Callable[[T], float] = lambda x: float(x)) -> None:
+        self._heap: list[tuple[float, int, T]] = []
         self._counter: int = 0
+        self._key = key
 
-    # Scheduling
-    def schedule(self, time: float, type: EventType, info: Any = None) -> Event:
+    # Insertion method
+    def push(self, item: T) -> T:
         """
-        Schedule a new event.
+        Add an item to the queue.
 
         Parameters
         ----------
-        time : float        Event execution time.
-        type : EventType    Event type.
-        info : Any          Optional payload.
+        item : T    The item to enqueue.
 
         Returns
         -------
-        Event  The created event instance.
-        """
-        if time < 0:
-            raise ValueError("Event time must be non-negative")
+        T   The same item (for chaining / assignment convenience).
 
-        event = Event(time=time, type=type, info=info)
-        heapq.heappush(self._heap, (time, self._counter, event))
+        Raises
+        ------
+        ValueError  If the derived priority is negative.
+        """
+        priority = self._key(item)
+        if priority < 0:
+            raise ValueError(f"Priority must be non-negative, got {priority}")
+
+        heapq.heappush(self._heap, (priority, self._counter, item))
         self._counter += 1
-        return event
+        return item
 
-    # Retrieval
-    def pop(self) -> Event:
+    # Retrieval method
+    def pop(self) -> T:
         """
-        Remove and return the earliest scheduled event.
-
-        Returns
-        -------
-        Event  Earliest event in the queue.
+        Remove and return the highest-priority (lowest key) item.
 
         Raises
         ------
         IndexError  If the queue is empty.
         """
-        _, _, event = heapq.heappop(self._heap)
-        return event
+        if self.is_empty():
+            raise IndexError("pop from an empty priority queue")
+        _, _, item = heapq.heappop(self._heap)
+        return item
 
-    def peek(self) -> Event:
+    def peek(self) -> T:
         """
-        Return the earliest event without removing it.
-
-        Returns
-        -------
-        Event  Earliest event in the queue.
+        Return the highest-priority item without removing it.
 
         Raises
         ------
         IndexError  If the queue is empty.
         """
+        if self.is_empty():
+            raise IndexError("peek at an empty priority queue")
         return self._heap[0][2]
 
+    def pop_many(self, n: int) -> list[T]:
+        """
+        Remove and return up to *n* items in priority order.
 
-    # Utilities
+        Parameters
+        ----------
+        n : int     Maximum number of items to retrieve.
+        """
+        return [self.pop() for _ in range(min(n, len(self)))]
+
+
+    # Utlities
     def is_empty(self) -> bool:
-        """Check whether the queue is empty."""
+        """Return True if the queue contains no items."""
         return len(self._heap) == 0
 
     def __len__(self) -> int:
-        """Return the number of scheduled events."""
+        """Return the number of items currently in the queue."""
         return len(self._heap)
+
+    def __str__(self) -> str:
+        if self.is_empty():
+            return "PriorityQueue(empty)"
+        lines = "\n".join(f"  {item}" for _, _, item in sorted(self._heap))
+        return f"PriorityQueue(\n{lines}\n)"
+    
+    def __repr__(self) -> str:
+        items = [str(item) for _, _, item in sorted(self._heap)]
+        return f"PriorityQueue([{', '.join(items)}])"

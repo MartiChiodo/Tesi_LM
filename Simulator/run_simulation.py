@@ -1,12 +1,12 @@
-import logging
-import sys
-import os
+import os, sys, logging
+import numpy.random 
 
 # Add the project root folder (the one containing Simulator) to the PATH
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import Simulator.config as config
 from Simulator.scripts.core.warehouse import Warehouse  
+from Simulator.scripts.sim.Simulator import Simulator
 
 
 def main():
@@ -24,10 +24,15 @@ def main():
         format="%(asctime)s %(levelname)s: %(message)s",
     )
 
-    # --- Warehouse initialization ---
+    # Seed
+    gen = numpy.random.default_rng(12345)
+
+
+    # Warehouse initialization 
     logging.info("Initializing warehouse ...")
 
     warehouse = Warehouse(
+        gen              = gen,
         num_pods         = config.NUM_PODS,
         num_skus         = config.NUM_SKUS,
         num_robots       = config.NUM_ROBOTS,
@@ -36,14 +41,13 @@ def main():
         grid_cols        = config.GRID_COLS,
         ws_order_cap     = config.WS_ORDER_CAPACITY,
         ws_pod_cap       = config.WS_QUEUE_CAPACITY,
-        robot_speed      = config.ROBOT_SPEED,
-        xi               = config.XI,
+        robot_speed      = config.ROBOT_SPEED
     )
 
     logging.info(f"Warehouse initialized: {warehouse}")
 
     # Visualization
-    warehouse.plot(save=True)
+    #warehouse.plot(save=True)
 
     # --- TODO ---
     # SKU distribution among pods
@@ -54,8 +58,12 @@ def main():
     # togliere gli append ma creare le liste come [None]*Num_elem
 
     ### SIMULATION
-    # sim = Simulator(warehouse, config)
-    # sim.run(config.TIME_HORIZON)
+    sim = Simulator(
+        gen= gen,
+        order_gen_params=[config.INTERRARIVAL_TIME_ORDER, config.PROB_1_ITEM_ORDER, config.GEO_DIST_PARAM_ORDER],
+        warehouse= warehouse
+    )
+    sim.run(config.TIME_HORIZON)
 
 
 if __name__ == "__main__":

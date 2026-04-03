@@ -1,5 +1,5 @@
 from __future__ import annotations
-from numpy.random import randint
+from numpy.random import Generator
 import os, logging
 import matplotlib.pyplot as plt
 
@@ -33,6 +33,7 @@ class Warehouse:
 
     def __init__(
         self,
+        gen: Generator,
         num_pods: int,
         num_skus: int,
         num_robots: int,
@@ -41,8 +42,7 @@ class Warehouse:
         grid_cols: int,
         ws_order_cap: int,
         ws_pod_cap: int,
-        robot_speed: float = 1.0,
-        xi: float = 0.2,
+        robot_speed: float = 30.0,
     ) -> None:
         """
         Initialize the warehouse: validate parameters, compute grid dimensions,
@@ -50,6 +50,7 @@ class Warehouse:
 
         Parameters
         ----------
+        gen: Generator          Istance of the numpy.random.Generator module to generate variables.
         num_pods : int          Total number of pods (must equal grid_rows * grid_cols).
         num_skus : int          Total number of SKUs (used for SKU distribution, TODO).
         num_robots : int        Total number of robots.
@@ -59,7 +60,6 @@ class Warehouse:
         ws_order_cap : int      Max simultaneous open orders per workstation.
         ws_pod_cap : int        Max pods in the waiting queue per workstation.
         robot_speed : float     Robot speed in cells per minute.
-        xi : float              Fraction of SKUs per pod (Boysen et al. 2017). TODO.
         """
 
         # Validation 
@@ -76,13 +76,13 @@ class Warehouse:
 
         # Warehouse physical dimensions (cell units)
         # One road is inserted every 2 pod rows/cols; MARGIN cells on each side
-        self.X = grid_rows + ((grid_rows - 1) // 2) + 2 * MARGIN - 1
-        self.Y = grid_cols + ((grid_cols - 1) // 2) + 2 * MARGIN - 1
+        self.X = grid_rows + 2*((grid_rows - 1) // 2) + 2 * MARGIN - 1
+        self.Y = grid_cols + 2 * MARGIN - 1
 
         # Entity generation
         self.pods = self._generate_pods(num_pods, grid_rows, grid_cols)
         self.workstations = self._generate_workstations(num_workstations, ws_order_cap, ws_pod_cap)
-        self.robots = self._generate_robots(num_robots)
+        self.robots = self._generate_robots(gen, num_robots)
 
 
 
@@ -93,7 +93,7 @@ class Warehouse:
         Place pods on the storage grid.
 
         Pod IDs increase left-to-right along each row, then top-to-bottom.
-        A road column is inserted every 2 pod columns; a road row every 2 pod rows.
+        2 road column is inserted every 2 pod columns.
         """
         pods = [None]*num_pods
 
@@ -101,8 +101,8 @@ class Warehouse:
             for row in range(grid_rows):
                 pod_id = col * grid_rows + row
 
-                x_pod = MARGIN + row + (row // 2)       # vertical roads every 2 pods
-                y_pod = self.Y - MARGIN - col - (col // 2)  # horizontal roads, top-down
+                x_pod = MARGIN + row + 2*(row // 2)       # vertical roads every 2 pods
+                y_pod = self.Y - MARGIN - col           # no horizontal roads, top-down
 
                 pods[pod_id] = Pod(
                         pod_id=pod_id,
@@ -194,7 +194,7 @@ class Warehouse:
         return workstations
 
 
-    def _generate_robots(self, num_robots: int) -> list[Robot]:
+    def _generate_robots(self, gen, num_robots: int) -> list[Robot]:
         """
         Assign random non-overlapping starting positions to robots.
         Positions are drawn uniformly from the interior of the warehouse.
@@ -203,9 +203,9 @@ class Warehouse:
         assigned_pos = set()   
 
         for robot_id in range(num_robots):
-            x_r, y_r = randint(1, self.X - 1), randint(1, self.Y - 1)
+            x_r, y_r = gen.integers(1, self.X - 1), gen.integers(1, self.Y - 1)
             while (x_r, y_r) in assigned_pos:
-                x_r, y_r = randint(1, self.X - 1), randint(1, self.Y - 1)
+                x_r, y_r = gen.integers(1, self.X - 1), gen.integers(1, self.Y - 1)
             assigned_pos.add((x_r, y_r))
 
             robots[robot_id] = Robot(

@@ -5,7 +5,6 @@
 
 Tesi_LM/  
 ├── Simulator/  
-│   ├── logs.log                   # Log file    
 │   ├── run_simulation.py          # Entry point: reads config, builds warehouse, runs simulation    
 │   ├── config.py                  # Numeric parameters for the simulation scenario  
 │   └── output/  
