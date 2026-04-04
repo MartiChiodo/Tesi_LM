@@ -80,7 +80,7 @@ class Warehouse:
         self.Y = grid_cols + 2 * MARGIN - 1
 
         # Entity generation
-        self.pods = self._generate_pods(num_pods, grid_rows, grid_cols)
+        self.pods = self._generate_pods(gen, num_pods, num_skus, grid_rows, grid_cols)
         self.workstations = self._generate_workstations(num_workstations, ws_order_cap, ws_pod_cap)
         self.robots = self._generate_robots(gen, num_robots)
 
@@ -88,7 +88,7 @@ class Warehouse:
 
     #  Private generation methods
 
-    def _generate_pods(self, num_pods: int, grid_rows: int, grid_cols: int) -> list[Pod]:
+    def _generate_pods(self, gen : Generator, num_pods: int, num_skus : int, grid_rows: int, grid_cols: int) -> list[Pod]:
         """
         Place pods on the storage grid.
 
@@ -96,6 +96,7 @@ class Warehouse:
         2 road column is inserted every 2 pod columns.
         """
         pods = [None]*num_pods
+        sku_extracted = set()
 
         for col in range(grid_cols):
             for row in range(grid_rows):
@@ -104,12 +105,23 @@ class Warehouse:
                 x_pod = MARGIN + row + 2*(row // 2)       # vertical roads every 2 pods
                 y_pod = self.Y - MARGIN - col           # no horizontal roads, top-down
 
+                ### MOMENTANEO
+                sku = [gen.integers(0, num_skus) for _ in range(20)]
+                sku_extracted.update(sku)
+
+
                 pods[pod_id] = Pod(
                         pod_id=pod_id,
                         status=PodStatus.IDLE,
                         home_position=(x_pod, y_pod),
-                        sku_ids=[],   # TODO: SKU distribution
+                        sku_ids=sku,   # TODO: SKU distribution
                     )
+                
+        ### MOMENTANEO
+        for i in range(num_skus):
+            if i not in sku_extracted:
+                id = gen.integers(0,num_pods)
+                pods[id].sku_ids.append(i)
 
         return pods
 
@@ -135,11 +147,11 @@ class Warehouse:
                 openorder_capacity=ws_order_cap,
                 podqueue_capacity=ws_pod_cap,
                 position=(x, y),
-                open_orders=[],
+                open_orders=set(),
                 picking_status=WorkstationPickingStatus.IDLE,
                 pod_queue=[],
                 order_queue=[],
-                pending_missions=[],
+                released_tasks=[],
             )
 
         # Case 1: symmetric placement on bottom edge
@@ -245,24 +257,34 @@ class Warehouse:
         self,
         a: tuple[int, int],
         b: tuple[int, int],
+        gen: Generator | None = None,
     ) -> float:
         """
         Estimate travel time between two grid positions.
 
         Computed as Manhattan distance divided by robot speed.
-        Centralising this here means the rest of the codebase never
-        needs to know about robot_speed directly.
+        If a Generator is provided and TRAVEL_NOISE_ENABLED is True,
+        a positive noise term is added sampled from a half-normal
+        distribution to ensure travel time is never reduced.
 
         Parameters
         ----------
-        a : tuple[int, int]   Source position (x, y).
-        b : tuple[int, int]   Destination position (x, y).
+        a : tuple[int, int]          Source position (x, y).
+        b : tuple[int, int]          Destination position (x, y).
+        gen : Generator | None       RNG instance for noise sampling.
+                                    If None, no noise is added.
 
         Returns
         -------
         float  Estimated travel time in minutes.
         """
-        return self.manhattan_distance(a, b) / self.robot_speed
+        nominal = self.manhattan_distance(a, b) / self.robot_speed
+
+        if gen is not None:
+            noise = abs(gen.normal(0, 2))
+            return nominal + noise
+
+        return nominal
 
 
 

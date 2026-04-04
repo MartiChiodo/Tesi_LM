@@ -25,3 +25,28 @@ class WorkstationPickingStatus(Enum):
     """Whether a workstation is currently executing a picking action."""
     IDLE = auto()  # no picking in progress
     BUSY = auto()  # picking in progress on an arrived pod
+
+
+class EventType(Enum):
+    """
+    Enumeration of all event types used in the simulator.
+    """
+
+    # --- Outer simulator ---
+    ARRIVAL_ORDER = auto()
+    RUN_OPTIMIZER = auto()
+
+    # --- Emulator ---
+    RELEASE_TASK = auto()
+    START_TASK = auto()
+    ARRIVAL_POD_WST = auto()
+    OPEN_ORDER = auto()
+    START_PICKING = auto()
+    END_PICKING = auto()
+    CLOSE_ORDER = auto()
+    RETURN_POD = auto()
+
+    # Utilities
+    def __str__(self) -> str:
+        return self.value
+

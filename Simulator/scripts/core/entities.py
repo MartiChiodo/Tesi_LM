@@ -1,7 +1,6 @@
+from typing import Any
 from dataclasses import dataclass, field
-from Simulator.scripts.core.enums import OrderStatus, RobotStatus, PodStatus, WorkstationPickingStatus
-from Simulator.scripts.core.events import PriorityQueue
-
+from Simulator.scripts.core.enums import OrderStatus, RobotStatus, PodStatus, WorkstationPickingStatus, EventType
 
 
 ### MISSIONS-RELATED CLASSES
@@ -16,14 +15,12 @@ class Visit:
 
     Parameters:
     workstation_id : int     Identifier of the destination workstation.
-    order_id : int           Identifier of the order being served.
+    order_ids : list[int]       Orders being served at this stop.
     sku_list : list[int]     List of SKUs to be picked at this stop.
-    t_desired : float        Target arrival time specified by the optimizer.
     """
     workstation_id: int
-    order_id: int
+    order_ids : list[int]
     sku_list: list[int]
-    t_desired: float
 
 
 @dataclass
@@ -39,13 +36,13 @@ class Task:
     task_id : int         Unique identifier of the task.
     pod_id : int          Identifier of the pod executing the task.
     visits : list[Visit]  Ordered list of stops to be executed.
-    priority : float      Scheduling priority (lower values typically indicate earlier execution).
-                          Usually computed as: min(t_desired - travel_time) across all visits.
+    priority : float      Priority parameter
     """
     task_id: int
     pod_id: int
     visits: list[Visit]
-    priority: float
+
+    priority : float
 
 
 
@@ -70,6 +67,7 @@ class Order:
     arrival_time : float
     num_skus: int
     sku_required: list[int]
+    sku_remaining: list[int]
     assigned_ws: int | None
     status: OrderStatus = OrderStatus.BACKLOG
 
@@ -132,7 +130,8 @@ class Workstation:
     open_orders : set(int)                     Orders currently being processed.
     pod_queue : list[int]                      Pods waiting at the workstation (excluding the active one).
     order_queue : list[int]                    Orders scheduled to be opened next.
-    pending_missions : list[Task]              Tasks that could not be released due to capacity constraints.
+    released_tasks : list[Visit]               Tasks already released but not allocated yet.
+    active_tasks : list[Visit]                 Tasks already allocated.
     picking_status : WorkstationPickingStatus  Current picking activity state.
     """
     workstation_id: int
@@ -143,58 +142,56 @@ class Workstation:
     open_orders: set[int] = field(default_factory=set)
     pod_queue: list[int] = field(default_factory=list)
     order_queue: list[int] = field(default_factory=list)
-    pending_missions: list[Task] = field(default_factory=list)
+
+    released_tasks: list[Visit] = field(default_factory=list)
+    active_tasks : list[Visit] = field(default_factory=list)
     picking_status: WorkstationPickingStatus = WorkstationPickingStatus.IDLE
 
-    # --------------------------------------------------------
+
     # Utility methods
-    # --------------------------------------------------------
 
     def has_open_slot(self) -> bool:
         """
         Check whether the workstation can accept a new order.
-
-        Returns
-        -------
-        bool: True if at least one order slot is available.
         """
         return len(self.open_orders) < self.openorder_capacity
 
     def pod_queue_full(self) -> bool:
         """
         Check whether the pod waiting queue is full.
-
-        Returns
-        -------
-        bool: True if the queue has reached its capacity.
         """
-        return len(self.pod_queue) >= self.podqueue_capacity
+        return len(self.pod_queue) + len(self.active_tasks) >= self.podqueue_capacity
 
     def find_pod_for_order(self, order_id: int, active_tasks: dict[int, Task]) -> int | None:
         """
         Find the pod assigned to serve a specific order at this workstation.
-
-        Parameters
-        ----------
-        order_id : int                   Target order identifier.
-        active_tasks : dict[int, Task]   Mapping from pod_id to currently active Task.
-
-        Returns
-        -------
-        int | None: pod_id if a matching pod is found, None otherwise.
         """
         for pod_id in self.pod_queue:
             task = active_tasks.get(pod_id)
             if task is None:
                 continue
-
             for visit in task.visits:
                 if (
                     visit.workstation_id == self.workstation_id
-                    and visit.order_id == order_id
+                    and order_id in visit.order_ids   
                 ):
                     return pod_id
-
         return None
 
 
+### EVENT container
+
+@dataclass
+class Event:
+    """
+    Discrete-event simulation (DES) event.
+
+    Parameters
+    ----------
+    time : float       Simulation time.
+    type : EventType   Event type.
+    info : Any         Optional payload.
+    """
+    time: float
+    type: EventType
+    info: Any = None  

@@ -4,7 +4,7 @@
 
 # Warehouse Layout 
 NUM_PODS         = 100
-NUM_SKUS         = 10
+NUM_SKUS         = 1000
 NUM_ROBOTS       = 10
 NUM_WORKSTATIONS = 10
 

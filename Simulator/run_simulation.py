@@ -63,7 +63,7 @@ def main():
         order_gen_params=[config.INTERRARIVAL_TIME_ORDER, config.PROB_1_ITEM_ORDER, config.GEO_DIST_PARAM_ORDER],
         warehouse= warehouse
     )
-    sim.run(config.TIME_HORIZON)
+    sim.run(60)
 
 
 if __name__ == "__main__":
