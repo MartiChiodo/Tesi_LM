@@ -41,7 +41,7 @@ class Warehouse:
         grid_rows: int,
         grid_cols: int,
         ws_order_cap: int,
-        ws_pod_cap: int,
+        ws_workload_cap: int,
         robot_speed: float = 30.0,
     ) -> None:
         """
@@ -81,7 +81,7 @@ class Warehouse:
 
         # Entity generation
         self.pods = self._generate_pods(gen, num_pods, num_skus, grid_rows, grid_cols)
-        self.workstations = self._generate_workstations(num_workstations, ws_order_cap, ws_pod_cap)
+        self.workstations = self._generate_workstations(num_workstations, ws_order_cap, ws_workload_cap)
         self.robots = self._generate_robots(gen, num_robots)
 
 
@@ -113,15 +113,15 @@ class Warehouse:
                 pods[pod_id] = Pod(
                         pod_id=pod_id,
                         status=PodStatus.IDLE,
-                        home_position=(x_pod, y_pod),
-                        sku_ids=sku,   # TODO: SKU distribution
+                        storage_location=(x_pod, y_pod),
+                        items=sku,   # TODO: SKU distribution
                     )
                 
         ### MOMENTANEO
         for i in range(num_skus):
             if i not in sku_extracted:
                 id = gen.integers(0,num_pods)
-                pods[id].sku_ids.append(i)
+                pods[id].items.append(i)
 
         return pods
 
@@ -130,7 +130,7 @@ class Warehouse:
         self,
         num_ws: int,
         ws_order_cap: int,
-        ws_pod_cap: int,
+        ws_workload_cap: int,
     ) -> list[Workstation]:
         """
         Place workstations along the warehouse perimeter.
@@ -144,14 +144,15 @@ class Warehouse:
         def make_ws(ws_id: int, x: int, y: int) -> Workstation:
             return Workstation(
                 workstation_id=ws_id,
-                openorder_capacity=ws_order_cap,
-                podqueue_capacity=ws_pod_cap,
+                order_capacity=ws_order_cap,
+                workload_capacity=ws_workload_cap,
                 position=(x, y),
-                open_orders=set(),
-                picking_status=WorkstationPickingStatus.IDLE,
-                pod_queue=[],
-                order_queue=[],
-                released_tasks=[],
+                opened_orders=set(),
+                status=WorkstationPickingStatus.IDLE,
+                pod_buffer=[],
+                order_buffer=[],
+                pending_tasks=[],
+                active_tasks=[]
             )
 
         # Case 1: symmetric placement on bottom edge
@@ -334,7 +335,7 @@ class Warehouse:
  
         # Pods — black squares
         for pod in self.pods:
-            x, y = pod.home_position
+            x, y = pod.storage_location
             ax.add_patch(plt.Rectangle((x - 0.4, y - 0.4), 0.8, 0.8, fill=False, color='black'))
             ax.text(x, y, str(pod.pod_id), ha='center', va='center', fontsize=8, color='black')
  

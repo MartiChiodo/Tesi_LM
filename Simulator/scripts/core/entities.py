@@ -10,39 +10,39 @@ class Visit:
     """
     Represents a single stop within a task.
 
-    A pod must travel to a specific workstation and pick a set of SKUs
+    A pod must travel to a specific workstation and pick a set of items
     associated with a given order.
 
-    Parameters:
-    workstation_id : int     Identifier of the destination workstation.
-    order_ids : list[int]       Orders being served at this stop.
-    sku_list : list[int]     List of SKUs to be picked at this stop.
+    Parameters
+    ----------
+    workstation_id : int    Identifier of the destination workstation.
+    orders : list[int]      Orders being served at this stop.
+    items : list[int]       List of items (SKUs) to be picked at this stop.
     """
     workstation_id: int
-    order_ids : list[int]
-    sku_list: list[int]
+    orders: list[int]
+    items: list[int]
 
 
 @dataclass
 class Task:
     """
-    Represents a full mission assigned to a pair pod-robot.
+    Represents a full mission assigned to a pod-robot pair.
 
-    A task consists of an ordered sequence of visits that define
+    A task consists of an ordered sequence of stops that define
     the route and picking operations for a pod.
 
     Parameters
     ----------
-    task_id : int         Unique identifier of the task.
-    pod_id : int          Identifier of the pod executing the task.
-    visits : list[Visit]  Ordered list of stops to be executed.
-    priority : float      Priority parameter
+    task_id : int        Unique identifier of the task.
+    pod_id : int         Identifier of the pod executing the task.
+    stops : list[Visit]  Ordered list of stops to be executed.
+    priority : float     Scheduling priority of the task.
     """
     task_id: int
     pod_id: int
-    visits: list[Visit]
-
-    priority : float
+    stops: list[Visit]
+    priority: float
 
 
 
@@ -57,23 +57,21 @@ class Order:
 
     Parameters
     ----------
-    order_id : int              Unique identifier of the order.
-    num_skus: int               Number of skus required by the order.
-    sku_required : list[int]    List of SKUs required to complete the order.
-    assigned_ws : int | None    Workstation assigned by the optimizer (None if not yet assigned).
-    status : OrderStatus        Current lifecycle status of the order.
+    order_id : int               Unique identifier of the order.
+    arrival_time : float         Simulation time at which the order arrived.
+    order_size : int             Total number of items required by the order.
+    items_required : list[int]   List of items (SKUs) required to complete the order.
+    items_pending : list[int]    Items not yet picked (decremented during execution).
+    workstation_id : int | None  Workstation assigned by the optimizer (None if not yet assigned).
+    status : OrderStatus         Current lifecycle status of the order.
     """
     order_id: int
-    arrival_time : float
-    num_skus: int
-    sku_required: list[int]
-    sku_remaining: list[int]
-    assigned_ws: int | None
+    arrival_time: float
+    order_size: int
+    items_required: list[int]
+    items_pending: list[int]
+    workstation_id: int | None
     status: OrderStatus = OrderStatus.BACKLOG
-
-
-
-
 
 
 ### EMULATOR RELATED CLASSES
@@ -89,7 +87,7 @@ class Robot:
     robot_id : int                Unique identifier of the robot.
     position : tuple[int, int]    Current grid position of the robot.
     current_task_id : int | None  ID of the task currently being executed (None if idle).
-    status : RobotStatus          Current robot status.
+    status : RobotStatus          Current operational status of the robot.
     """
     robot_id: int
     position: tuple[int, int]
@@ -104,14 +102,14 @@ class Pod:
 
     Parameters
     ----------
-    pod_id : int                      Unique identifier of the pod.
-    home_position : tuple[int, int]   Default storage location of the pod.
-    sku_ids : list[int]               SKUs stored in the pod.
-    status : PodStatus                Current pod status.
+    pod_id : int                         Unique identifier of the pod.
+    storage_location : tuple[int, int]   Default grid cell where the pod rests when idle.
+    items : list[int]                    Items (SKUs) currently stored in the pod.
+    status : PodStatus                   Current operational status of the pod.
     """
     pod_id: int
-    home_position: tuple[int, int]
-    sku_ids: list[int] = field(default_factory=list)
+    storage_location: tuple[int, int]
+    items: list[int] = field(default_factory=list)
     status: PodStatus = PodStatus.IDLE
 
 
@@ -122,30 +120,30 @@ class Workstation:
 
     Attributes
     ----------
-    workstation_id : int        Unique identifier of the workstation.
-    openorder_capacity : int    Maximum number of simultaneously open orders.
-    podqueue_capacity : int     Maximum number of pods allowed in the waiting queue.
-    position : tuple[int, int]  Grid position of the workstation.
+    workstation_id : int          Unique identifier of the workstation.
+    order_capacity : int          Maximum number of simultaneously active orders.
+    workload_capacity : int       Maximum number of tasks simultanesosly released.
+    position : tuple[int, int]    Grid position of the workstation.
 
-    open_orders : set(int)                     Orders currently being processed.
-    pod_queue : list[int]                      Pods waiting at the workstation (excluding the active one).
-    order_queue : list[int]                    Orders scheduled to be opened next.
-    released_tasks : list[Visit]               Tasks already released but not allocated yet.
-    active_tasks : list[Visit]                 Tasks already allocated.
-    picking_status : WorkstationPickingStatus  Current picking activity state.
+    opened_orders : set[int]                   Orders currently being processed.
+    pod_buffer : list[int]                     Pods waiting at the workstation (excluding the active one).
+    order_buffer : list[int]                   Orders scheduled to be opened next.
+    pending_tasks : list[Visit]                Tasks released but not yet allocated to a robot.
+    active_tasks : list[Visit]                 Tasks currently allocated to a robot.
+    status : WorkstationPickingStatus          Current picking activity state.
     """
     workstation_id: int
-    openorder_capacity: int
-    podqueue_capacity: int
+    order_capacity: int
+    workload_capacity: int
     position: tuple[int, int]
 
-    open_orders: set[int] = field(default_factory=set)
-    pod_queue: list[int] = field(default_factory=list)
-    order_queue: list[int] = field(default_factory=list)
+    opened_orders: set[int] = field(default_factory=set)
+    pod_buffer: list[int] = field(default_factory=list)
+    order_buffer: list[int] = field(default_factory=list)
 
-    released_tasks: list[Visit] = field(default_factory=list)
-    active_tasks : list[Visit] = field(default_factory=list)
-    picking_status: WorkstationPickingStatus = WorkstationPickingStatus.IDLE
+    pending_tasks: list[Visit] = field(default_factory=list)
+    active_tasks: list[Visit] = field(default_factory=list)
+    status: WorkstationPickingStatus = WorkstationPickingStatus.IDLE
 
 
     # Utility methods
@@ -154,26 +152,26 @@ class Workstation:
         """
         Check whether the workstation can accept a new order.
         """
-        return len(self.open_orders) < self.openorder_capacity
+        return len(self.opened_orders) < self.order_capacity
 
-    def pod_queue_full(self) -> bool:
+    def overloaded_workstation(self) -> bool:
         """
-        Check whether the pod waiting queue is full.
+        Check whether the workstation has workload left.
         """
-        return len(self.pod_queue) + len(self.active_tasks) >= self.podqueue_capacity
+        return len(self.pod_buffer) + len(self.active_tasks) >= self.workload_capacity
 
     def find_pod_for_order(self, order_id: int, active_tasks: dict[int, Task]) -> int | None:
         """
         Find the pod assigned to serve a specific order at this workstation.
         """
-        for pod_id in self.pod_queue:
+        for pod_id in self.pod_buffer:
             task = active_tasks.get(pod_id)
             if task is None:
                 continue
-            for visit in task.visits:
+            for stop in task.stops:
                 if (
-                    visit.workstation_id == self.workstation_id
-                    and order_id in visit.order_ids   
+                    stop.workstation_id == self.workstation_id
+                    and order_id in stop.orders
                 ):
                     return pod_id
         return None
@@ -188,10 +186,10 @@ class Event:
 
     Parameters
     ----------
-    time : float       Simulation time.
+    time : float       Simulation time at which the event is scheduled.
     type : EventType   Event type.
-    info : Any         Optional payload.
+    info : Any         Optional payload carrying event-specific data.
     """
     time: float
     type: EventType
-    info: Any = None  
+    info: Any = None

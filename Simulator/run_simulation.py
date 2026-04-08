@@ -32,16 +32,16 @@ def main():
     logging.info("Initializing warehouse ...")
 
     warehouse = Warehouse(
-        gen              = gen,
-        num_pods         = config.NUM_PODS,
-        num_skus         = config.NUM_SKUS,
-        num_robots       = config.NUM_ROBOTS,
-        num_workstations = config.NUM_WORKSTATIONS,
-        grid_rows        = config.GRID_ROWS,
-        grid_cols        = config.GRID_COLS,
-        ws_order_cap     = config.WS_ORDER_CAPACITY,
-        ws_pod_cap       = config.WS_QUEUE_CAPACITY,
-        robot_speed      = config.ROBOT_SPEED
+        gen                   = gen,
+        num_pods              = config.NUM_PODS,
+        num_skus              = config.NUM_SKUS,
+        num_robots            = config.NUM_ROBOTS,
+        num_workstations      = config.NUM_WORKSTATIONS,
+        grid_rows             = config.GRID_ROWS,
+        grid_cols             = config.GRID_COLS,
+        ws_order_cap          = config.WS_ORDER_CAPACITY,
+        ws_workload_cap       = config.WS_WORKLOAD_CAPACITY,
+        robot_speed           = config.ROBOT_SPEED
     )
 
     logging.info(f"Warehouse initialized: {warehouse}")

@@ -38,14 +38,14 @@ class Simulator:
         optimization : bool = False
     ) -> None:
         
-        self.GEN = gen
-        self.ORDER_GEN_PARAMS = order_gen_params
-        self.optimization = optimization
-        self.warehouse = warehouse
+        self.RNG = gen
+        self.order_gen_config = order_gen_params
+        self.optimization_enabled = optimization
+        self.warehouse_status = warehouse
 
-        self.clock = 0
-        self.event_queue: PriorityQueue[Event] = PriorityQueue(key=lambda e: e.time)
-        self.arrived_orders: PriorityQueue[Order] = PriorityQueue(
+        self.current_time = 0
+        self.future_events: PriorityQueue[Event] = PriorityQueue(key=lambda e: e.time)
+        self.orders_in_system: PriorityQueue[Order] = PriorityQueue(
                                 key=lambda o: (o.status != OrderStatus.BACKLOG, o.arrival_time), 
                                 id_attr='order_id')
         
@@ -54,7 +54,7 @@ class Simulator:
                     ws.workstation_id: PriorityQueue(key=lambda t: t.priority, id_attr='task_id')
                     for ws in warehouse.workstations
                 }
-        self.released_tasks: PriorityQueue[Task] = PriorityQueue(key=lambda t: (self.warehouse.pods[t.pod_id].status != PodStatus.IDLE, t.priority), id_attr='task_id')
+        self.released_tasks: PriorityQueue[Task] = PriorityQueue(key=lambda t: (self.warehouse_status.pods[t.pod_id].status != PodStatus.IDLE, t.priority), id_attr='task_id')
 
 
     # DISPATCH TABLE
@@ -82,19 +82,19 @@ class Simulator:
 
         # Schedule first event
         e = Event(time = 1e-8, type = EventType.ARRIVAL_ORDER)
-        self.event_queue.push(item= e)
+        self.future_events.push(item= e)
 
         # MAIN DES LOOP 
-        self.clock = 0
-        while not self.event_queue.is_empty() and self.clock < time_horizon:
+        self.current_time = 0
+        while not self.future_events.is_empty() and self.current_time < time_horizon:
 
             # Retrievent next event to process
-            event_to_process = self.event_queue.pop()
-            self.clock = event_to_process.time
+            event_to_process = self.future_events.pop()
+            self.current_time = event_to_process.time
 
             logging.info(
                 "CLOCK = %.4f --> processing %s",
-                self.clock,
+                self.current_time,
                 event_to_process.type.name
                 )
             
@@ -103,7 +103,7 @@ class Simulator:
 
         logging.info("\nEND SIMULATION\n")
 
-        print(self.arrived_orders)
+        print(self.orders_in_system)
 
 
 

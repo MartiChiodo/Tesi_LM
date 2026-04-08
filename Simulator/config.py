@@ -16,7 +16,7 @@ ROBOT_SPEED = 30.0       # cells per minute (1 m/s)
 
 # Workstations
 WS_ORDER_CAPACITY = 1   # M: max simultaneous open orders per workstation
-WS_QUEUE_CAPACITY = 3   # max pods waiting in pod_queue per workstation 
+WS_WORKLOAD_CAPACITY = 3   # max pods waiting in pod_queue per workstation 
                         # (more of an indication on how many active tasks reòlated to each ws simultaneosly)
 
 
