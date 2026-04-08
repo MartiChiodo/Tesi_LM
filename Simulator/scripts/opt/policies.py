@@ -95,10 +95,11 @@ def design_tasks_for_ws(workstation, warehouse, arrived_orders, task_counter) ->
         tasks.append(Task(
             task_id=task_counter + len(tasks),
             pod_id=best_pod.pod_id,
+            robot_id= None,
             stops=[Visit(
                 workstation_id=workstation.workstation_id,
-                orders=contributing_orders,
-                items=skus_for_visit
+                orders=set(contributing_orders),
+                items=set(skus_for_visit)
             )],
             priority=task_counter + len(tasks),
         ))

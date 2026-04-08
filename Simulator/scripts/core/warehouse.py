@@ -43,6 +43,8 @@ class Warehouse:
         ws_order_cap: int,
         ws_workload_cap: int,
         robot_speed: float = 30.0,
+        pod_proc_time : float = 5/60,
+        item_proc_time : float = 5/60
     ) -> None:
         """
         Initialize the warehouse: validate parameters, compute grid dimensions,
@@ -58,8 +60,10 @@ class Warehouse:
         grid_rows : int         Number of pod rows.
         grid_cols : int         Number of pod columns.
         ws_order_cap : int      Max simultaneous open orders per workstation.
-        ws_pod_cap : int        Max pods in the waiting queue per workstation.
+        ws_workload_cap : int   Max simultaneous task released per workstation.
         robot_speed : float     Robot speed in cells per minute.
+        pod_proc_time : float   Time to process a pod in a picking station.
+        item_proc_time : float  Time to pick a single item.
         """
 
         # Validation 
@@ -81,7 +85,7 @@ class Warehouse:
 
         # Entity generation
         self.pods = self._generate_pods(gen, num_pods, num_skus, grid_rows, grid_cols)
-        self.workstations = self._generate_workstations(num_workstations, ws_order_cap, ws_workload_cap)
+        self.workstations = self._generate_workstations(num_workstations, ws_order_cap, ws_workload_cap, pod_proc_time, item_proc_time)
         self.robots = self._generate_robots(gen, num_robots)
 
 
@@ -106,7 +110,7 @@ class Warehouse:
                 y_pod = self.Y - MARGIN - col           # no horizontal roads, top-down
 
                 ### MOMENTANEO
-                sku = [gen.integers(0, num_skus) for _ in range(20)]
+                sku = set([gen.integers(0, num_skus) for _ in range(20)])
                 sku_extracted.update(sku)
 
 
@@ -121,7 +125,7 @@ class Warehouse:
         for i in range(num_skus):
             if i not in sku_extracted:
                 id = gen.integers(0,num_pods)
-                pods[id].items.append(i)
+                pods[id].items.add(i)
 
         return pods
 
@@ -131,6 +135,8 @@ class Warehouse:
         num_ws: int,
         ws_order_cap: int,
         ws_workload_cap: int,
+        pod_proc_time: float,
+        item_proc_time: float
     ) -> list[Workstation]:
         """
         Place workstations along the warehouse perimeter.
@@ -149,10 +155,12 @@ class Warehouse:
                 position=(x, y),
                 opened_orders=set(),
                 status=WorkstationPickingStatus.IDLE,
-                pod_buffer=[],
+                task_buffer=[],
                 order_buffer=[],
                 pending_tasks=[],
-                active_tasks=[]
+                active_tasks=[],
+                pod_process_time=pod_proc_time,
+                item_process_time=item_proc_time
             )
 
         # Case 1: symmetric placement on bottom edge
@@ -224,7 +232,6 @@ class Warehouse:
             robots[robot_id] = Robot(
                     robot_id=robot_id,
                     position=(x_r, y_r),
-                    current_task_id=None,
                     status=RobotStatus.IDLE,
                 )
 

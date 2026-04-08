@@ -41,13 +41,15 @@ def main():
         grid_cols             = config.GRID_COLS,
         ws_order_cap          = config.WS_ORDER_CAPACITY,
         ws_workload_cap       = config.WS_WORKLOAD_CAPACITY,
-        robot_speed           = config.ROBOT_SPEED
+        robot_speed           = config.ROBOT_SPEED,
+        pod_proc_time         = config.POD_PROCESS_TIME,
+        item_proc_time        = config.ITEM_PROCESS_TIME
     )
-
+ 
     logging.info(f"Warehouse initialized: {warehouse}")
 
     # Visualization
-    #warehouse.plot(save=True)
+    # warehouse.plot(save=True)
 
     # --- TODO ---
     # SKU distribution among pods

@@ -1,285 +1,320 @@
-\documentclass{article}
+\documentclass[a4paper,10pt]{article}
 
-\usepackage{sectsty}
-\usepackage{pdfpages}
-\usepackage{tikz}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
 \usepackage{graphicx}
-\usepackage{csquotes}
-\usepackage{amsmath}
-\usepackage[
-backend=biber,
-style=alphabetic,
-sorting=nyt
-]{biblatex}
-\addbibresource{DocSmulatorBib.bib} %Import the bibliography file
-
-\usepackage{url}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs, array, tabularx, longtable}
+\usepackage[table]{xcolor}
 \usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{csquotes}
+\usepackage{listings}
 \usepackage{footmisc}
-
-\usepackage{booktabs}   
-\usepackage[table]{xcolor} 
-\usepackage{array}    
+\usepackage{graphicx}
 
 
 % Margins
-\topmargin=-0.45in
-\evensidemargin=0in
-\oddsidemargin=0in
-\textwidth=6.5in
-\textheight=9.0in
-\headsep=0.25in
+\geometry{margin=2.5cm}
 
-\title{Doc Simulator}
+% Color definitions for DONE/TODO
+\definecolor{donegreen}{RGB}{34,139,34}
+\definecolor{todored}{RGB}{178,34,34}
+\newcommand{\done}{\textcolor{donegreen}{\bfseries DONE}}
+\newcommand{\todo}{\textcolor{todored}{\bfseries TODO}}
+
+% Colonna fissa centrata per tabularx
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+
+% Bibliography
+\usepackage[backend=biber,style=alphabetic,sorting=nyt]{biblatex}
+\addbibresource{DocSmulatorBib.bib}
+
+\title{\textbf{Documentazione Simulatore RMFS}}
+\author{}
+\date{}
 
 \begin{document}
-\maketitle	
+\maketitle
+\tableofcontents
+\newpage
 
-\subsection{Assumptions}
-\begin{itemize}
-    \item Replenishment missions are not considered; hence, inventory constraints are neglected. Each pod contains a limited set of SKUs, but the exact quantity of each SKU or its volume are not known.
-    \item Technical aspects related to robots, such as energy management and routing, are out of scope and therefore not modeled.
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Assunzioni}
+
+Le seguenti assunzioni semplificative delimitano il campo di applicazione del simulatore.
+
+\begin{itemize}[noitemsep]
+    \item Le missioni di replenishment non sono considerate, pertanto non si modellano vincoli di inventario. Ogni pod contiene un insieme limitato di SKU, ma non si conosce la quantità esatta né il volume di ciascun articolo.
+    \item Aspetti tecnici dei robot, come gestione dell'energia e routing a basso livello, sono fuori dal campo di questo simulatore e non vengono modellati.
 \end{itemize}
 
-\section{Overview}
-Il simulatore ad eventi discreti emula la dinamica operativa di un RMFS (Robotic Mobile Fulfillment System) in stile Amazon, basato su un approccio parts-to-picker, modellando il flusso degli ordini (dall'arrivo al completamento) e la movimentazione di robot e pod nel sistema.
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Descrizione Generale}
+Il simulatore ad eventi discreti emula la dinamica operativa di un RMFS (Robotic Mobile Fulfillment System) in stile Amazon, basato su approccio \textit{parts-to-picker}: i robot portano i pod alle workstation, dove gli operatori prelevano gli item degli ordini.
 
-Il progetto supporta due modalità decisionali: (i) un approccio a ottimizzazione ciclica, in cui ogni $\Delta t_{opt}$ viene risolto un modello per la generazione e assegnazione dei task; (ii) un approccio reattivo, basato su policy con lookahead limitato, utilizzate per prendere decisioni online al verificarsi degli eventi.
+Il simulatore supporta due modalità decisionali:
+\begin{enumerate}[noitemsep]
+    \item \textbf{Ottimizzazione ciclica:} ogni $\Delta t_{\text{opt}}$ viene risolto un modello matematico per la generazione e il sequenziamento dei task.
+    \item \textbf{Policy reattive:} decisioni online basate su euristiche con lookahead limitato, attivate al verificarsi degli eventi.
+\end{enumerate}
+
+In entrambe le modalità, l'assegnamento fisico del task a un robot è sempre gestito tramite policy.
 
 
-\subsection{Project Structure}
-Il codice è organizzato su tre livelli logici:
- 
-\begin{center}
-\begin{tabular}{ll}
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Struttura del Codice}
+
+Il progetto è organizzato su tre livelli logici: \texttt{core} (entità e strutture dati condivise), \texttt{sim} (motore DES e handler degli eventi), \texttt{opt} (policy di assegnazione).
+
+\begin{table}[htbp]
+\begin{tabularx}{\textwidth}{l X}
 \toprule
-\textbf{Path} & \textbf{Role} \\
+\textbf{Percorso} & \textbf{Ruolo} \\
 \midrule
-\file{run\_simulation.py}         & Entry point: configures logging, builds warehouse, runs simulation \\
-\file{config.py}                  & All numeric parameters in one place \\
-\file{scripts/core/enums.py}      & Enumerations for all discrete states and event types \\
-\file{scripts/core/entities.py}   & Domain dataclasses: \texttt{Order}, \texttt{Pod}, \texttt{Robot}, \texttt{Workstation}, \ldots \\
-\file{scripts/core/queues.py}     & Generic priority queue (min-heap with O(1) id lookup) \\
-\file{scripts/core/warehouse.py}  & Physical layout, enity generation, distance utilities \\
-\file{scripts/sim/Simulator.py}   & Core DES engine: clock, event loop, dispatch table \\
-\file{scripts/sim/event\_handler.py} & One handler function per event type \\
-\file{scripts/opt/policies.py}    & Heuristic assignment policies \\
+\texttt{run\_simulation.py}          & Punto di ingresso: configura il logging, costruisce il warehouse, avvia la simulazione \\
+\texttt{config.py}                   & Parametri numerici centralizzati \\
+\texttt{scripts/core/enums.py}       & Enumerazioni per stati discreti e tipi di eventi \\
+\texttt{scripts/core/entities.py}    & Dataclass per \texttt{Order}, \texttt{Pod}, \texttt{Robot}, \texttt{Workstation}, ecc. \\
+\texttt{scripts/core/queues.py}      & Coda con priorità generica (min-heap con lookup O(1)) \\
+\texttt{scripts/core/warehouse.py}   & Layout fisico, generazione entità, utilities di distanza \\
+\texttt{scripts/sim/Simulator.py}    & Motore DES principale: clock, event loop, dispatch table \\
+\texttt{scripts/sim/event\_handler.py} & Funzione handler per ciascun tipo di evento \\
+\texttt{scripts/opt/policies.py}     & Policy euristiche di assegnazione \\
 \bottomrule
-\end{tabular}
-\end{center}
-
-\section{Input Information}
-La tabella seguente riassume i principali parametri del simulatore, indicando per ciascuno il dominio di valori considerato e alcune informazioni aggiuntive sul loro ruolo o utilizzo.
-
-\begin{table}[htbp!]
-\centering
-\begin{tabular}{p{4cm} p{5cm} p{6cm}}
-\toprule
-\textbf{Parametro} & \textbf{Dominio}\footnotemark[1] & \textbf{Info} \\
-\midrule
-\texttt{NUM\_PODS} & ??? & Numero totale di pod (\texttt{GRID\_ROWS} $\times$ \texttt{GRID\_COLS}) \\
-\texttt{NUM\_SKUS} & ??? & Numero di tipi di SKU distinti \\
-\texttt{NUM\_ROBOTS} & ??? & Numero di robot mobili autonomi \\
-\texttt{NUM\_WORKSTATIONS} & ??? & Numero di postazioni di picking \\
-\texttt{GRID\_ROWS / GRID\_COLS} & ??? / ??? & Dimensioni della griglia di stoccaggio pod \\
-\texttt{WS\_ORDER\_CAPACITY}\footnotemark[2] & 3 & Numero massimo di ordini aperti per postazione \\
-\texttt{WS\_WORKLOAD\_CAPACITY} & ??? & Numero di missioni rilasciate per workstation \\
-\midrule
-\texttt{ROBOT\_SPEED} & 30.0 & Velocità del robot in celle/min ($\approx 0{,}5$\,m/s) \\
-\texttt{POD\_PROCESS\_TIME}\footnotemark[2] & 5\,sec & Tempo di processo di un pod alla workstation \\
-\texttt{ITEM\_PROCESS\_TIME}\footnotemark[2] & 5\,sec & Tempo di picking di un item alla workstation \\
-\midrule
-\texttt{INTERARRIVAL\_TIME\_ORDER}\footnotemark[2] & $\left\{\frac{12}{35}, \frac{6}{25}, \frac{3}{10}, \frac{3}{40}, \frac{1}{5}, \frac{3}{50}, \frac{3}{100}, \frac{3}{250}\right\}$ & Tempo medio (in min) di interarrivo ordini \\
-\texttt{PROB\_1\_ITEM\_ORDER}\footnotemark[2] & 0.5 & Probabilità che un ordine contenga un solo articolo \\
-\texttt{GEO\_DIST\_PARAM\_ORDER}\footnotemark[2] & \{0.25, 0.35, 0.45, 0.65\} & Parametro geometrica per ordini multi-articolo \\
-\midrule
-\texttt{TIME\_HORIZON} & ??? & Durata totale della simulazione (in min) \\
-\texttt{DELTA\_T\_OPT}\footnotemark[2] & 15\,min & Intervallo di chiamata dell'ottimizzatore \\
-\bottomrule
-\end{tabular}
-\caption{Parametri di configurazione della simulazione.}
-\label{tab:config}
+\end{tabularx}
+\caption{Struttura dei folder e dei file del progetto.}
 \end{table}
 
-\footnotetext[1]{Ancora da definire; dove presente, il valore è quello usato da Barnhart o fissato a priori.}
-\footnotetext[2]{Parametro preso dalla repository GitHub \url{https://github.com/alexschmid3/warehouse-task-assignment}.}
 
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Parametri di Input}
 
+La tabella seguente raccoglie i parametri di configurazione del simulatore.
+I parametri che definiscono la generazione degli ordini e i tempi di processamento dei pod alle workstation hanno dominio definito da \cite{Barnhart2024}\footnote{Repository github \url{https://github.com/alexschmid3/warehouse-task-assignment}.}.
+
+I valori numerici presenti sono quelli adottati da\cite{Barnhart2024} o fissati sulla base della letteratura; i parametri con \texttt{???} sono ancora da definire.
+
+\begin{table}[htbp]
+\begin{longtable}{p{5cm} p{4.5cm} p{5.5cm}}
+\toprule
+\textbf{Parametro} & \textbf{Dominio} & \textbf{Descrizione} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Parametro} & \textbf{Dominio} & \textbf{Descrizione} \\
+\midrule
+\endhead
+\multicolumn{3}{l}{\textit{Layout e capacità}} \\[2pt]
+\texttt{NUM\_PODS}              & ???         & Numero totale di pod (\texttt{GRID\_ROWS} $\times$ \texttt{GRID\_COLS}) \\
+\texttt{NUM\_SKUS}              & ???         & Numero di SKU distinti \\
+\texttt{NUM\_ROBOTS}            & ???         & Numero di robot mobili autonomi \\
+\texttt{NUM\_WORKSTATIONS}      & ???         & Numero di postazioni di picking \\
+\texttt{GRID\_ROWS / GRID\_COLS}& ??? / ???   & Dimensioni della griglia pod \\
+\texttt{WS\_ORDER\_CAPACITY}    & 3           & Numero massimo di ordini aperti per postazione \\
+\texttt{WS\_WORKLOAD\_CAPACITY} & ???         & Numero di task rilasciati per workstation \\[6pt]
+\multicolumn{3}{l}{\textit{Tempi operativi}} \\[2pt]
+\texttt{ROBOT\_SPEED}           & 30.0        & Velocità robot (celle/min, $\approx 0{,}5$ m/s) \\
+\texttt{POD\_PROCESS\_TIME}     & 5 s         & Tempo di processo di un pod alla workstation \\
+\texttt{ITEM\_PROCESS\_TIME}    & 5 s         & Tempo di picking di un item alla workstation \\[6pt]
+\multicolumn{3}{l}{\textit{Generazione ordini}} \\[2pt]
+\texttt{INTERARRIVAL\_TIME\_ORDER} & $\left\{\frac{12}{35}, \frac{6}{25}, \frac{3}{10}, \frac{3}{40}, \frac{1}{5}, \frac{3}{50}, \frac{3}{100}, \frac{3}{250}\right\}$ & Tempo medio di interarrivo ordini (min) \\
+\texttt{PROB\_1\_ITEM\_ORDER}   & 0.5                     & Probabilità che un ordine contenga un solo item \\
+\texttt{GEO\_DIST\_PARAM\_ORDER}& \{0.25, 0.35, 0.45, 0.65\} & Parametro geometrico per ordini multi-articolo \\[6pt]
+\multicolumn{3}{l}{\textit{Controllo simulazione}} \\[2pt]
+\texttt{TIME\_HORIZON}          & ???         & Durata totale della simulazione (min) \\
+\texttt{DELTA\_T\_OPT}          & 15 min      & Intervallo di chiamata dell'ottimizzatore \\
+\bottomrule
+\end{longtable}
+\caption{Parametri numerici del simulatore divisi per funzionalità.}
+\end{table}
 \clearpage
-\section{Domain Entities}
-Le entità del simulatore sono implementate come dataclass Python. Di seguito vengono descritti i campi principali di ciascuna.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Entità del Dominio}
+
+Le entità sono implementate come dataclass Python e rappresentano lo stato persistente del sistema durante la simulazione. Le principali sono: \texttt{Order}, \texttt{Pod}, \texttt{Robot}, \texttt{Workstation}, \texttt{Task}, \texttt{Visit}.
 
 \subsection{Order}
-Rappresenta un ordine cliente lungo tutto il suo ciclo di vita.
 
-\begin{center}
-\begin{tabular}{p{3.5cm} p{4.5cm} p{7cm}}
+Traccia un ordine cliente dall'arrivo al completamento. Il campo \texttt{items\_pending} viene decrementato man mano che gli item vengono prelevati.
+
+\vspace{0.4em}
+\begin{tabularx}{\textwidth}{l l X}
 \toprule
 \textbf{Campo} & \textbf{Tipo} & \textbf{Descrizione} \\
 \midrule
-\texttt{order\_id}       & \texttt{int}          & Identificatore univoco dell'ordine \\
-\texttt{arrival\_time}   & \texttt{float}        & Tempo di simulazione all'arrivo dell'ordine \\
-\texttt{order\_size}     & \texttt{int}          & Numero totale di SKU richieste dall'ordine \\
-\texttt{items\_required} & \texttt{list[int]}    & Lista completa delle SKU richieste \\
-\texttt{items\_pending}  & \texttt{list[int]}    & Item non ancora prelevati (decrementata durante l'esecuzione) \\
-\texttt{workstation\_id} & \texttt{int | None}   & Workstation assegnata dall'ottimizzatore (\texttt{None} se non ancora assegnato) \\
-\texttt{status}          & \texttt{OrderStatus}  & Stato corrente del ciclo di vita (\texttt{BACKLOG}, \texttt{WAITING}, \texttt{OPEN} o \texttt{CLOSED}) \\
+\texttt{order\_id}       & \texttt{int}         & Identificatore univoco \\
+\texttt{arrival\_time}   & \texttt{float}       & Tempo di arrivo dell'ordine \\
+\texttt{order\_size}     & \texttt{int}         & Numero di item richiesti \\
+\texttt{items\_required} & \texttt{list[int]}   & Lista completa degli item richiesti \\
+\texttt{items\_pending}  & \texttt{list[int]}   & Item non ancora prelevati \\
+\texttt{workstation\_id} & \texttt{int | None}  & Workstation assegnata (\texttt{None} se non ancora assegnato) \\
+\texttt{status}          & \texttt{OrderStatus} & Stato del ciclo di vita: \texttt{BACKLOG → WAITING → OPEN → CLOSED} \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{tabularx}
 
 \subsection{Pod}
-Rappresenta un pod di stoccaggio che può essere trasportato da un robot.
 
-\begin{center}
-\begin{tabular}{p{3.5cm} p{4.5cm} p{7cm}}
+Rappresenta un pod di stoccaggio. Quando idle, il pod si trova alla propria \texttt{storage\_location}; quando in missione, il suo stato diventa \texttt{BUSY}.
+
+\vspace{0.4em}
+\begin{tabularx}{\textwidth}{l l X}
 \toprule
 \textbf{Campo} & \textbf{Tipo} & \textbf{Descrizione} \\
 \midrule
-\texttt{pod\_id}           & \texttt{int}            & Identificatore univoco del pod \\
-\texttt{storage\_location} & \texttt{tuple[int,int]} & Cella di stoccaggio nella griglia quando il pod è idle \\
-\texttt{items}             & \texttt{list[int]}      & Item (SKU) attualmente contenuti nel pod \\
-\texttt{status}            & \texttt{PodStatus}      & \texttt{IDLE} (a riposo) o \texttt{BUSY} (in transito o in attesa) \\
+\texttt{pod\_id}           & \texttt{int}            & Identificatore univoco \\
+\texttt{storage\_location} & \texttt{tuple[int,int]} & Cella di stoccaggio nella griglia \\
+\texttt{items}             & \texttt{list[int]}      & SKU attualmente contenuti nel pod \\
+\texttt{status}            & \texttt{PodStatus}      & \texttt{IDLE} o \texttt{BUSY} \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{tabularx}
 
 \subsection{Robot}
-Rappresenta un robot mobile autonomo che preleva e trasporta i pod.
 
-\begin{center}
-\begin{tabular}{p{3.5cm} p{4.5cm} p{7cm}}
+Ogni robot è sempre in uno dei due stati: \texttt{IDLE} (disponibile) o \texttt{BUSY} (in esecuzione di un task). Il campo \texttt{current\_task\_id} è \texttt{None} quando il robot è libero.
+
+\vspace{0.4em}
+\begin{tabularx}{\textwidth}{l l X}
 \toprule
 \textbf{Campo} & \textbf{Tipo} & \textbf{Descrizione} \\
 \midrule
-\texttt{robot\_id}         & \texttt{int}            & Identificatore univoco del robot \\
+\texttt{robot\_id}         & \texttt{int}            & Identificatore univoco \\
 \texttt{position}          & \texttt{tuple[int,int]} & Posizione corrente nella griglia \\
 \texttt{current\_task\_id} & \texttt{int | None}     & Task in esecuzione (\texttt{None} se idle) \\
 \texttt{status}            & \texttt{RobotStatus}    & \texttt{IDLE} o \texttt{BUSY} \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{tabularx}
 
 \subsection{Workstation}
-Modella lo stato di una postazione di picking operata da un operatore umano.
 
-\begin{center}
-\begin{tabular}{p{3.5cm} p{4.5cm} p{6.5cm}}
+La workstation gestisce due buffer separati: uno per i pod (\texttt{pod\_buffer}) e uno per gli ordini in attesa di apertura (\texttt{order\_buffer}). I task vengono prima rilasciati (\texttt{pending\_tasks}) e poi allocati a un robot (\texttt{active\_tasks}).
+
+\vspace{0.4em}
+\begin{tabularx}{\textwidth}{l l X}
 \toprule
 \textbf{Campo} & \textbf{Tipo} & \textbf{Descrizione} \\
 \midrule
-\texttt{workstation\_id} & \texttt{int}                      & Identificatore univoco della postazione \\
-\texttt{order\_capacity} & \texttt{int}                      & Numero massimo di ordini attivi simultaneamente \\
-\texttt{workload\_capacity} & \texttt{int}                      & Numero massimo di task rilasciate per la workstation (indicazione più che hard-constraints) \\
-\texttt{position}        & \texttt{tuple[int,int]}           & Coordinate nella griglia \\
-\texttt{opened\_orders}  & \texttt{set[int]}                 & Ordini attualmente in lavorazione \\
-\texttt{pod\_buffer}     & \texttt{list[int]}                & Pod in attesa (escluso quello attivo) \\
-\texttt{order\_buffer}   & \texttt{list[int]}                & Ordini in attesa di essere aperti \\
-\texttt{pending\_tasks}  & \texttt{list[Visit]}              & Task rilasciati ma non ancora allocati a un robot \\
-\texttt{active\_tasks}   & \texttt{list[Visit]}              & Task correntemente allocati a un robot \\
-\texttt{status}          & \texttt{WorkstationPickingStatus} & \texttt{IDLE} o \texttt{BUSY} (si riferisce all'azione del picking)\\
+\texttt{workstation\_id}   & \texttt{int}                      & Identificatore univoco \\
+\texttt{order\_capacity}   & \texttt{int}                      & Massimo ordini aperti simultaneamente \\
+\texttt{workload\_capacity}& \texttt{int}                      & Massimo task rilasciati per workstation \\
+\texttt{position}          & \texttt{tuple[int,int]}           & Coordinate nella griglia \\
+\texttt{opened\_orders}    & \texttt{set[int]}                 & Ordini attualmente in lavorazione \\
+\texttt{pod\_buffer}       & \texttt{list[int]}                & Pod in attesa (escluso quello attivo) \\
+\texttt{order\_buffer}     & \texttt{list[int]}                & Ordini in attesa di apertura \\
+\texttt{pending\_tasks}    & \texttt{list[Visit]}              & Task rilasciati ma non ancora allocati \\
+\texttt{active\_tasks}     & \texttt{list[Visit]}              & Task correntemente allocati a un robot \\
+\texttt{status}            & \texttt{WorkstationPickingStatus} & \texttt{IDLE} o \texttt{BUSY} \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{tabularx}
 
-\subsection{Visit e Task}
-Una \texttt{Visit} rappresenta una singola fermata all'interno di una missione: specifica la workstation di destinazione, gli ordini serviti (\texttt{orders}) e la lista di item da prelevare (\texttt{items}).
+\subsection{Task e Visit}
 
-Un \texttt{Task} è una sequenza ordinata di fermate (\texttt{stops}) assegnata a una coppia pod-robot. Ogni task porta un campo \texttt{priority} utilizzato dalla coda con priorità per determinare l'ordine di dispatching.
+Un \texttt{Task} è una missione assegnata a una coppia pod-robot, composta da una sequenza ordinata di fermate (\texttt{stops}). Ogni fermata è una \texttt{Visit}, che specifica la workstation di destinazione, gli ordini serviti (\texttt{orders}) e gli item da prelevare (\texttt{items}). Il campo \texttt{priority} del task determina l'ordine di dispatching nella coda.
 
+\subsection{Enumerazioni}
 
-\subsection{Enumerations}
-\texttt{OrderStatus}, \texttt{RobotStatus}, \texttt{PodStatus} e \texttt{WorkstationPickingStatus} sono oggetti di tipo \texttt{Enum} che descrivono in modo univoco gli stati delle entità durante la simulazione. L'uso delle enumerazioni permette di gestire le transizioni di stato in maniera chiara e coerente, semplificando la logica di simulazione e il tracciamento degli eventi nei log e nella raccolta delle statistiche.
+\texttt{OrderStatus}, \texttt{RobotStatus}, \texttt{PodStatus} e \texttt{WorkstationPickingStatus} definiscono gli stati discreti delle entità, rendendo esplicite le transizioni di stato nella logica di simulazione.
 
-
+% ─────────────────────────────────────────────────────────────────────────────
 \section{Warehouse Layout}
-La classe \texttt{Warehouse} organizza e raccoglie le entità fisiche del sistema (\texttt{Pod}, \texttt{Robot} e \texttt{Workstation}).  
-A partire dai parametri di input \texttt{grid\_rows} e \texttt{grid\_cols}, viene generata una griglia rettangolare di pod con dimensioni totali:
+
+Il warehouse è generato a partire da \texttt{grid\_rows} e \texttt{grid\_cols}. I pod sono disposti in una griglia rettangolare; ogni due colonne di pod viene inserita una strada di larghezza due celle per consentire il transito dei robot. Le dimensioni fisiche risultanti sono:
 
 \[
-  X = \text{grid\_rows} + 2\left\lfloor\frac{\text{grid\_rows}-1}{2}\right\rfloor + 2\cdot\text{MARGIN} - 1,
-  \qquad
-  Y = \text{grid\_cols} + 2\cdot\text{MARGIN} - 1
+X = \text{grid\_rows} + 2\left\lfloor\frac{\text{grid\_rows}-1}{2}\right\rfloor + 2 \cdot \text{MARGIN} - 1,
+\qquad
+Y = \text{grid\_cols} + 2 \cdot \text{MARGIN} - 1
 \]
 
-Ogni due colonne di pod viene inserita una strada larga due celle per il passaggio dei robot, mentre i margini laterali consentono la distribuzione delle workstation.  
-Le postazioni di picking vengono collocate sul perimetro in base al numero disponibile, cercando di mantenerle simmetriche quando possibile.  
-I robot ricevono posizioni iniziali casuali non sovrapposte all'interno dell'area libera della griglia.  
+Le workstation vengono distribuite sul perimetro, preferibilmente sul lato inferiore in modo simmetrico. I robot partono da posizioni casuali non sovrapposte. Il tempo di percorrenza tra due celle è calcolato come distanza di Manhattan divisa per \texttt{robot\_speed}; questa è l'unica dipendenza dalla velocità nel codice.
 
-Il tempo di percorrenza tra due celle viene stimato tramite distanza di Manhattan divisa per \texttt{robot\_speed} con l'aggiunta di un ritardo randomico, utilizzata solo all'interno di \texttt{Warehouse}, mantenendo il resto del codice indipendente dalla metrica di distanza.
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\textwidth]{images/warehouse_layout.png}
+\caption{Esempio di layout creato con \texttt{GRID\_ROWS} = 10, \texttt{GRID\_COLS} = 10, \texttt{NUM\_ROBOTS} = 20 e \texttt{NUM\_WORKSTATION} = 9. \\ In nero sono le \texttt{storage\_location} di ciascun pod, in rosso quelle delle workstation e in blu le posizioni iniziali dei robot.}
+\end{figure}
 
-
+% ─────────────────────────────────────────────────────────────────────────────
 \section{Simulator Engine}
-La classe \texttt{simulator} contiene le informazioni riguardanti il proprio stato e il metodo che manda avanti il loop di simulazione.
 
-\begin{center}
-\begin{tabular}{p{4cm} p{4.5cm} p{6.4cm}}
+Il \texttt{Simulator} è il contenitore di tutto lo stato della simulazione e guida il loop degli eventi. La tabella seguente descrive i suoi attributi principali.
+
+\vspace{0.4em}
+\begin{tabularx}{\textwidth}{l l X}
 \toprule
-\textbf{Attribute} & \textbf{Type} & \textbf{Description} \\
+\textbf{Attributo} & \textbf{Tipo} & \textbf{Descrizione} \\
 \midrule
-\texttt{RNG}              & \texttt{numpy.Generator}        & Seeded RNG for reproducibility \\
-\texttt{order\_gen\_config} & \texttt{list[float]}          & \texttt{[interarrival\_time, prob\_1\_item, geo\_param]} \\
-\texttt{optimization\_enabled}     & \texttt{bool}                   & If False, use heuristic policies \\
-\texttt{warehouse\_status}        & \texttt{Warehouse}              & Physical environment and status of entities \\
-\midrule
-\texttt{current\_time}            & \texttt{float}                  & Current simulation time (minutes) \\
-\texttt{future\_events}     & \texttt{PriorityQueue[Event]}   & Pending events, keyed by time \\
-\texttt{orders\_in\_system}  & \texttt{PriorityQueue[Order]}   & All received orders; BACKLOG orders surface first \\
-\midrule
-\texttt{task\_counter}    & \texttt{int}                    & Monotonically increasing task ID \\
-\texttt{released\_tasks}  & \texttt{PriorityQueue[Task]}    & Tasks ready for robot assignment \\
-\texttt{scheduled\_tasks}  & \texttt{dict[int, PriorityQueue[Task]] }    & Tasks scheduled for each workstation by the optimizer \\
+\texttt{RNG}                & \texttt{numpy.Generator}        & Generatore casuale per riproducibilità \\
+\texttt{order\_gen\_config} & \texttt{list[float]}            & \texttt{[interarrival\_time, prob\_1\_item, geo\_param]} \\
+\texttt{optimization\_enabled} & \texttt{bool}                & \texttt{False} $\to$ policy euristiche; \texttt{True} $\to$ ottimizzatore \\
+\texttt{warehouse\_status}  & \texttt{Warehouse}              & Ambiente fisico e stato di tutte le entità \\
+\texttt{current\_time}      & \texttt{float}                  & Tempo di simulazione corrente (minuti) \\
+\texttt{future\_events}     & \texttt{PriorityQueue[Event]}   & Eventi futuri ordinati per timestamp di occorrenza \\
+\texttt{orders\_in\_system} & \texttt{PriorityQueue[Order]}   & Ordini ricevuti; gli ordini \texttt{BACKLOG} hanno priorità \\
+\texttt{task\_counter}      & \texttt{int}                    & Contatore incrementale per gli ID dei task \\
+\texttt{released\_tasks}    & \texttt{PriorityQueue[Task]}    & Task pronti per l'assegnazione a un robot \\
+\texttt{scheduled\_tasks}   & \texttt{dict[int, PriorityQueue[Task]]} & Task programmati per workstation dall'ottimizzatore (usato solo se \texttt{optimization\_enabled} è \texttt{True})\\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{tabularx}
 
 \subsection{Event Loop}
-Il simulatore esegue un loop DES standard:
- 
-\begin{enumerate}
-  \item Pop the earliest event from \texttt{event\_queue}.
-  \item Advance \texttt{current\_time} to the event's timestamp.
-  \item Dispatch the event to its handler via the dispatch table.
-  \item Repeat until the queue is empty or the time horizon is reached.
+
+Il loop principale segue la struttura classica di un DES ed è definito dal metodo \texttt{run\_simulation} della classe \texttt{Simulator}:
+\begin{enumerate}[noitemsep]
+    \item Pop dell'evento con timestamp minore da \texttt{future\_events}.
+    \item Avanzamento di \texttt{current\_time} al tempo dell'evento.
+    \item Dispatch all'handler corrispondente tramite la dispatch table.
+    \item Ripeti fino a esaurimento della coda o raggiungimento di \texttt{TIME\_HORIZON}.
 \end{enumerate}
 
+\subsection{Generazione Ordini}
 
-\subsection{Order Generation}
-La generazione degli ordini segue quella usata da \cite{Barnhart2024}.
-\begin{itemize}
-  \item Con probabilità \texttt{PROB\_1\_ITEM\_ORDER}, l'ordine contine un singolo item.
-  \item Altrimenti, il numero di SKU è dato da $\text{Geometric}(p) + 2$ con $p = \texttt{GEO\_DIST\_PARAM\_ORDER}$.
-  \item Gli indici delle SKU sono estratta da una normale troncata centrata in $N/2$ e con deviazione standard $N/6$, dove $N$ corrisponde a \texttt{NUM\_SKUS}.
-\end{itemize} 
+La generazione degli ordini segue il modello di Barnhart et al \cite{Barnhart2024}:
+\begin{itemize}[noitemsep]
+    \item Con probabilità \texttt{PROB\_1\_ITEM\_ORDER}, l'ordine contiene un solo item.
+    \item Altrimenti il numero di item è $\text{Geometric}(p) + 2$, con $p =$ \texttt{GEO\_DIST\_PARAM\_ORDER}.
+    \item Gli indici SKU sono estratti da una normale troncata centrata in $N/2$ con $\sigma = N/6$, dove $N =$ \texttt{NUM\_SKUS}.
+\end{itemize}
 
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Event Handlers}
 
-\section{Event Handlers }
-\label{sec:handlers}
- 
-Ogni \texttt{EventType} è associato a una singola funzione handler con firma \texttt{handler(event, sim)}. La funzione legge e modifica lo stato della simulazione attraverso l’oggetto \texttt{sim}.
+Ogni \texttt{EventType} è associato a una funzione handler con firma \texttt{handler(event, sim)}, che legge e modifica lo stato della simulazione tramite l'oggetto \texttt{sim}. La tabella riassume lo stato di implementazione corrente.
 
-\begin{center}
-\begin{tabular}{p{3.4cm} p{2.4cm} p{7.8cm}}
+\begin{table}
+\begin{tabularx}{\textwidth}{l c X}
 \toprule
 \textbf{Evento} & \textbf{Stato} & \textbf{Responsabilità} \\
 \midrule
-\texttt{ARRIVAL\_ORDER}     & \textbf{DONE}   & Genera un nuovo ordine, lo inserisce in \texttt{arrived\_orders} e programma il prossimo arrivo. Se non è attivo l’ottimizzatore: assegna l’ordine alla workstation meno occupata, aprendo immediatamente o mettendo in coda. \\
-\texttt{OPEN\_ORDER}        & \textbf{DONE}   & Imposta lo stato dell’ordine a \texttt{OPEN} e lo aggiunge alla lista \texttt{open\_orders} della workstation. Se la coda dei pod non è piena, attiva \texttt{RELEASE\_TASK}. \\
-\texttt{RELEASE\_TASK}      & \textbf{DONE}   & Se non è attivo l’ottimizzatore: chiama \texttt{design\_tasks\_for\_ws()} per generare i task, li inserisce in \texttt{released\_tasks} e aggiorna la lista \texttt{released\_tasks} della workstation. \\
-\texttt{RUN\_OPTIMIZER}     & \textbf{TODO}   & Chiama l’ottimizzatore esterno per assegnare gli ordini in backlog e generare i task. \\
-\texttt{START\_TASK}        & \textbf{TODO}   & Assegna un robot inattivo a un task rilasciato; imposta lo stato del robot e del pod su \texttt{BUSY}. \\
-\texttt{ARRIVAL\_POD\_WST}  & \textbf{TODO}   & Gestisce l’arrivo del pod alla workstation; lo aggiunge alla \texttt{pod\_queue} e avvia il picking se la postazione è libera. \\
-\texttt{START\_PICKING}     & \textbf{TODO}   & Avvia la sessione di picking; imposta lo stato della workstation su \texttt{BUSY} e programma \texttt{END\_PICKING}. \\
-\texttt{END\_PICKING}       & \textbf{TODO}   & Completa il picking; decrementa \texttt{sku\_remaining} per gli ordini coinvolti. \\
-\texttt{CLOSE\_ORDER}       & \textbf{TODO}   & Imposta lo stato dell’ordine su \texttt{CLOSED} quando tutti gli SKU sono stati prelevati; libera lo slot della workstation. \\
-\texttt{RETURN\_POD}        & \textbf{TODO}   & Riporta il pod alla \texttt{home\_position}; imposta robot e pod su \texttt{IDLE}. \\
+\texttt{ARRIVAL\_ORDER}    & \done & Genera ordine, lo inserisce in \texttt{orders\_in\_system}, programma il prossimo arrivo; se senza ottimizzatore, assegna alla workstation meno carica. \\
+\texttt{OPEN\_ORDER}       & \done & Imposta l'ordine a \texttt{OPEN}, lo aggiunge a \texttt{opened\_orders}; se il pod buffer non è pieno, triggera \texttt{RELEASE\_TASK}. \\
+\texttt{RELEASE\_TASK}     & \done & Se senza ottimizzatore, genera i task tramite policy, li inserisce in \texttt{released\_tasks} e aggiorna la workstation. \\
+\texttt{RUN\_OPTIMIZER}    & \todo & Chiama l'ottimizzatore esterno per assegnare gli ordini in backlog e generare i task. \\
+\texttt{START\_TASK}       & \todo & Assegna un robot idle al task; imposta robot e pod a \texttt{BUSY}. \\
+\texttt{ARRIVAL\_POD\_WST} & \todo & Gestisce l'arrivo del pod alla workstation; lo aggiunge al \texttt{pod\_buffer} e avvia il picking se la workstation è \texttt{IDLE}. \\
+\texttt{START\_PICKING}    & \todo & Avvia la sessione di picking; imposta la workstation a \texttt{BUSY} e programma \texttt{END\_PICKING}. \\
+\texttt{END\_PICKING}      & \todo & Completa il picking; decrementa \texttt{items\_pending} per gli ordini coinvolti. \\
+\texttt{CLOSE\_ORDER}      & \todo & Imposta l'ordine a \texttt{CLOSED} quando tutti gli item sono stati prelevati; libera lo slot nella workstation. \\
+\texttt{RETURN\_POD}       & \todo & Riporta il pod alla \texttt{storage\_location}; imposta robot e pod a \texttt{IDLE}. \\
 \bottomrule
-\end{tabular}
-\end{center}
+\end{tabularx}
+\end{table}
 
+\begin{figure}[htbp]
+\centering\includegraphics[width=\textwidth]{images/ERG_simPolicies_cropped.pdf}
+\caption{Grafo per mostrare la relazione tra gli eventi quando \texttt{optimization\_enabled = False}. Le frecce indicano quale evento verrà schedulato.}
+\end{figure}
 
+\begin{figure}[htbp]
+\centering\includegraphics[width=\textwidth]{images/ERG_SimOptim_cropped.pdf}
+\caption{Grafo per mostrare la relazione tra gli eventi quando \texttt{optimization\_enabled = True}. Le frecce indicano quale evento verrà schedulato.}
+\end{figure}
 
+\clearpage
 
 \newpage
 \printbibliography
+
 \end{document}

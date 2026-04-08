@@ -17,11 +17,11 @@ class Visit:
     ----------
     workstation_id : int    Identifier of the destination workstation.
     orders : list[int]      Orders being served at this stop.
-    items : list[int]       List of items (SKUs) to be picked at this stop.
+    items : list[int]       Set of items (SKUs) to be picked at this stop.
     """
     workstation_id: int
-    orders: list[int]
-    items: list[int]
+    orders: set[int]
+    items: set[int]
 
 
 @dataclass
@@ -34,13 +34,15 @@ class Task:
 
     Parameters
     ----------
-    task_id : int        Unique identifier of the task.
-    pod_id : int         Identifier of the pod executing the task.
-    stops : list[Visit]  Ordered list of stops to be executed.
-    priority : float     Scheduling priority of the task.
+    task_id : int          Unique identifier of the task.
+    pod_id : int           Identifier of the pod executing the task.
+    robot_id : int | None  Identifier of the robot allocated to the task.
+    stops : list[Visit]    Ordered list of stops to be executed, pop() is used during END_PICKING
+    priority : float       Scheduling priority of the task.
     """
     task_id: int
     pod_id: int
+    robot_id: int | None
     stops: list[Visit]
     priority: float
 
@@ -68,8 +70,8 @@ class Order:
     order_id: int
     arrival_time: float
     order_size: int
-    items_required: list[int]
-    items_pending: list[int]
+    items_required: set[int]
+    items_pending: set[int]
     workstation_id: int | None
     status: OrderStatus = OrderStatus.BACKLOG
 
@@ -86,12 +88,10 @@ class Robot:
     ----------
     robot_id : int                Unique identifier of the robot.
     position : tuple[int, int]    Current grid position of the robot.
-    current_task_id : int | None  ID of the task currently being executed (None if idle).
     status : RobotStatus          Current operational status of the robot.
     """
     robot_id: int
     position: tuple[int, int]
-    current_task_id: int | None
     status: RobotStatus = RobotStatus.IDLE
 
 
@@ -109,7 +109,7 @@ class Pod:
     """
     pod_id: int
     storage_location: tuple[int, int]
-    items: list[int] = field(default_factory=list)
+    items: set[int] = field(default_factory=list)
     status: PodStatus = PodStatus.IDLE
 
 
@@ -124,9 +124,11 @@ class Workstation:
     order_capacity : int          Maximum number of simultaneously active orders.
     workload_capacity : int       Maximum number of tasks simultanesosly released.
     position : tuple[int, int]    Grid position of the workstation.
+     pod_process_time : float     Time to process a pod arrived to a picking station.
+    item_process_time : float     Time to pick a single item to a picking station.
 
     opened_orders : set[int]                   Orders currently being processed.
-    pod_buffer : list[int]                     Pods waiting at the workstation (excluding the active one).
+    task_buffer : list[int]                    Pods waiting at the workstation (excluding the active one).
     order_buffer : list[int]                   Orders scheduled to be opened next.
     pending_tasks : list[Visit]                Tasks released but not yet allocated to a robot.
     active_tasks : list[Visit]                 Tasks currently allocated to a robot.
@@ -136,9 +138,11 @@ class Workstation:
     order_capacity: int
     workload_capacity: int
     position: tuple[int, int]
+    pod_process_time : float
+    item_process_time : float
 
     opened_orders: set[int] = field(default_factory=set)
-    pod_buffer: list[int] = field(default_factory=list)
+    task_buffer: list[int] = field(default_factory=list)
     order_buffer: list[int] = field(default_factory=list)
 
     pending_tasks: list[Visit] = field(default_factory=list)
@@ -175,6 +179,9 @@ class Workstation:
                 ):
                     return pod_id
         return None
+    
+    def estimated_picking_time(self, num_items) -> float:
+        return self.pod_process_time + num_items*self.item_process_time
 
 
 ### EVENT container

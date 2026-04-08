@@ -5,8 +5,8 @@
 # Warehouse Layout 
 NUM_PODS         = 100
 NUM_SKUS         = 1000
-NUM_ROBOTS       = 10
-NUM_WORKSTATIONS = 10
+NUM_ROBOTS       = 20
+NUM_WORKSTATIONS = 9
 
 GRID_ROWS = 10       # number of rows for the pod grid
 GRID_COLS = 10       # number of columns for the pod grid
@@ -31,6 +31,10 @@ INTERRARIVAL_TIME_ORDER = 0.34   # equivalent of 175 orders per hour (unit time 
 TIME_HORIZON  = 60   # total simulation time in minutes (1 day)
 DELTA_T_OPT   = 15       # optimizer is called every DELTA_T_OPT minutes
 
+
+# Pikcing time
+POD_PROCESS_TIME = 5/60
+ITEM_PROCESS_TIME = 5/60
 
 
 
