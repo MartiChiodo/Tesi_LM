@@ -9,11 +9,6 @@ from Simulator.scripts.sim import event_handler as eh
 from Simulator.scripts.core.enums import OrderStatus, EventType, PodStatus, RobotStatus
 
 
-# ── Costanti di formattazione ──────────────────────────────────────────────────
-_SEP_MAJOR = "═" * 72   # separatore principale (inizio/fine simulazione)
-_SEP_EVENT = "─" * 72   # separatore tra eventi
-_LOG_INTERVAL = 50       # stampa riepilogo di stato ogni N eventi
-
 
 class Simulator:
     """
