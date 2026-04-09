@@ -39,6 +39,8 @@ class PriorityQueue(Generic[T]):
         self._id_attr = id_attr
         self._index: dict[int, T] = {}
 
+        self.active_size = 0
+
     
     # Internal helpers
 
@@ -61,6 +63,7 @@ class PriorityQueue(Generic[T]):
 
         heapq.heappush(self._heap, (priority, self._counter, item))
         self._counter += 1
+        self.active_size += 1
 
         item_id = self._get_id(item)
         if item_id is not None:
@@ -72,6 +75,7 @@ class PriorityQueue(Generic[T]):
     def update(self, item: T) -> T:
         """
         Overwrite an existing item (by id) with a new version.
+        Removes old entries from the index, preventing duplicates.
         """
         if self._id_attr is None:
             raise ValueError("update requires id_attr to be set")
@@ -80,11 +84,20 @@ class PriorityQueue(Generic[T]):
         if item_id is None:
             raise ValueError("Item must have a valid id")
 
-        # overwrite logico (la vecchia entry diventa stale)
-        self._index[item_id] = item
+        # Mark the old item as stale by removing it from the index
+        old_item = self._index.get(item_id)
+        if old_item is not None:
+            # old_item stays in heap but will be ignored by pop/peek
+            self.active_size -= 1 
+            self._index.pop(item_id)
 
+        # Push new item onto heap
         heapq.heappush(self._heap, (self._key(item), self._counter, item))
         self._counter += 1
+
+        # Register new item in index
+        self._index[item_id] = item
+        self.active_size += 1 
 
         return item
 
@@ -104,7 +117,8 @@ class PriorityQueue(Generic[T]):
                 if self._index.get(item_id) is not item:
                     continue
                 self._index.pop(item_id, None)
-
+                
+            self.active_size -= 1
             return item
 
         raise IndexError("pop from an empty priority queue")
@@ -155,12 +169,20 @@ class PriorityQueue(Generic[T]):
     # Utilities 
 
     def is_empty(self) -> bool:
-        """Return True if the queue contains no items."""
-        return len(self._heap) == 0
+        """Return True if the queue contains no valid items."""
+        # rimuove eventuali stale in cima
+        while self._heap:
+            _, _, item = self._heap[0]
+            item_id = self._get_id(item)
+            if item_id is not None and self._index.get(item_id) is not item:
+                heapq.heappop(self._heap)
+                continue
+            return False
+        return True
 
     def __len__(self) -> int:
         """Return the number of items currently in the queue."""
-        return len(self._heap)
+        return self.active_size
 
     def __iter__(self):
         """Iterate over items in priority order without modifying the queue."""

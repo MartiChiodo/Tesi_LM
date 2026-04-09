@@ -134,7 +134,7 @@ def design_tasks_for_ws(
             # Find SKUs from this pod that match order requirements
             order_matching_skus = [
                 sku for sku in best_pod.items
-                if sku in order.items_pending
+                if sku in order.items_pending and sku in uncovered_skus
             ]
             
             if order_matching_skus:
@@ -163,15 +163,6 @@ def design_tasks_for_ws(
         tasks.append(t)
         already_selected.add(best_pod.pod_id)
         uncovered_skus -= set(best_pod.items)
-        
-    logging.info(
-        "Task design completed | ws_id=%d, num_tasks=%d, "
-        "total_items=%d, remaining_skus=%d",
-        workstation.workstation_id,
-        len(tasks),
-        sum(len(task.stops[0].items) for task in tasks),
-        len(uncovered_skus)
-    )
     
     return tasks, task_counter
 

@@ -14,14 +14,16 @@ from Simulator.scripts.opt.policies import assign_order_to_workstation_policy, d
 from Simulator.scripts.sim.utils import sample_sku
 
 
+
+
 def arrival_order(event: Event, sim) -> None:
     """
     Handle a new customer order arrival.
-
+ 
     Generates an order following Barnhart et al. 2024: single-item with 
     probability p, otherwise geometric(p) + 2 items. Adds the order to 
     the system backlog and schedules the next order arrival.
-
+ 
     If optimization is disabled, immediately assigns the order to the 
     least-loaded workstation and opens it if a slot is available.
     """
@@ -30,14 +32,12 @@ def arrival_order(event: Event, sim) -> None:
     order_id = sim.orders_counter
     sim.orders_counter += 1
     
-    # Sample order size: 1 item with prob p, else geometric distribution
     rnd = sim.RANDOM_GENERATOR.random()
     if rnd < sim.order_gen_config[1]:
         order_size = 1
     else:
         order_size = sim.RANDOM_GENERATOR.geometric(p=sim.order_gen_config[2]) + 2
     
-    # Generate SKU list
     sku_list = [
         sample_sku(sim.RANDOM_GENERATOR, sim.warehouse_status.num_skus) 
         for _ in range(order_size)
@@ -55,12 +55,10 @@ def arrival_order(event: Event, sim) -> None:
     )
     sim.orders_in_system.push(o)
     
-    logging.info(
-        "[t=%.2f] Order arrived | order_id=%d, size=%d, num_skus=%d",
-        sim.current_time, order_id, order_size, len(set(sku_list))
-    )
+    logging.info("Order %i arrived: items_required = %s.     [orders_in_system = %i]",
+                order_id, sku_list, sim.orders_counter - _count_closed(sim))
     
-    # Schedule next order arrival
+    # Schedule next arrival
     interarrival_time = sim.order_gen_config[0]
     next_arrival_event = Event(
         time=sim.current_time + interarrival_time,
@@ -79,7 +77,6 @@ def arrival_order(event: Event, sim) -> None:
         o.status = OrderStatus.WAITING
         
         if workstation.has_open_slot():
-            # Open order immediately
             open_event = Event(
                 time=sim.current_time,
                 type=EventType.OPEN_ORDER,
@@ -89,10 +86,8 @@ def arrival_order(event: Event, sim) -> None:
         else:
             # Queue for later opening
             workstation.order_buffer.append(order_id)
-            logging.info(
-                "[t=%.2f] Order queued (no capacity) | order_id=%d, ws_id=%d, queue_len=%d",
-                sim.current_time, order_id, workstation_id, len(workstation.order_buffer)
-            )
+            logging.info("Order queued at workstation %i.   [order_queue len = %i]",
+                         workstation_id, len(workstation.order_buffer))
 
 
 def open_order(event: Event, sim) -> None:
@@ -106,7 +101,7 @@ def open_order(event: Event, sim) -> None:
     
     o = event.info
     
-    # Validate precondition
+    # Validation precondition
     if o.workstation_id is None:
         raise ValueError(
             f"Cannot open order {o.order_id}: no workstation assigned"
@@ -124,10 +119,8 @@ def open_order(event: Event, sim) -> None:
     o.status = OrderStatus.OPEN
     workstation.opened_orders.add(o.order_id)
     
-    logging.info(
-        "[t=%.2f] Order opened | order_id=%d, ws_id=%d, items_pending=%d",
-        sim.current_time, o.order_id, o.workstation_id, len(o.items_pending)
-    )
+    logging.info("Order %i (skus required = %s) opened at workstation %i.   [open_orders = %i/%i]",
+                 o.order_id, o.items_required, o.workstation_id, len(workstation.opened_orders), workstation.order_capacity)
     
     # Design tasks if not using optimization
     if not sim.optimization_enabled:
@@ -141,11 +134,8 @@ def open_order(event: Event, sim) -> None:
         
         if tasks:
             total_items = sum(len(t.stops[0].items) for t in tasks)
-            
-            logging.info(
-                "[t=%.2f] Tasks designed | ws_id=%d, num_tasks=%d, total_items=%d",
-                sim.current_time, o.workstation_id, len(tasks), total_items
-            )
+            logging.info("%i task(s) designed covering %i sku(s) required",
+                         len(tasks), total_items)
             
             # Schedule task releases
             for t in tasks:
@@ -156,10 +146,8 @@ def open_order(event: Event, sim) -> None:
                 )
                 sim.future_events.push(release_event)
         else:
-            logging.info(
-                "[t=%.2f] No tasks designed | ws_id=%d, order_id=%d",
-                sim.current_time, o.workstation_id, o.order_id
-            )
+            logging.info("no tasks designed (all SKUs already covered)")
+
     else:
         # Optimization path: request tasks from optimizer
         available_capacity = workstation.released_task_capacity - workstation.counter_released_task
@@ -193,10 +181,8 @@ def release_task(event: Event, sim) -> None:
     if sim.optimization_enabled:
         if not workstation.can_release_task():
             return
-        
         if sim.scheduled_tasks[workstation_id].is_empty():
             return
-        
         task = sim.scheduled_tasks[workstation_id].pop()
     else:
         task = event.info
@@ -208,14 +194,14 @@ def release_task(event: Event, sim) -> None:
         sim.released_tasks.push(task)
     
     # Register as pending at all involved workstations
+    ws_list = []
     for visit in task.stops:
         workstation = sim.warehouse_status.get_workstation(visit.workstation_id)
         workstation.released_tasks.add(task.task_id) 
+        ws_list.append(visit.workstation_id)
     
-    logging.info(
-        "[t=%.2f] Task released | task_id=%d, pod_id=%d, ws_id=%d",
-        sim.current_time, task.task_id, task.pod_id, workstation_id
-    )
+    logging.info("Task %i released: pod %i required by workstation(s) %s.  [number of released tasks = %i]",
+                 task.task_id, task.pod_id, ws_list, len(sim.released_tasks))
     
     # Trigger execution if idle robot available
     has_idle_robot = any(
@@ -238,27 +224,39 @@ def start_task(event: Event, sim) -> None:
 
     assert not sim.released_tasks.is_empty(), "START_TASK called but no released tasks to start."
     
-    task = sim.released_tasks.peek()
-    pod = sim.warehouse_status.get_pod(task.pod_id)
+    task_popped_is_not_idle = True
+    task_popped_not_idle = []
+    while task_popped_is_not_idle:
+
+        if sim.released_tasks.is_empty():
+            return
+
+        task = sim.released_tasks.pop()
+        pod = sim.warehouse_status.get_pod(task.pod_id)
     
-    # Check preconditions
-    if pod.status != PodStatus.IDLE:
-        logging.info(
-            "[t=%.2f] Task cannot start | pod_id=%d, pod_status=%s (expected IDLE)",
-            sim.current_time, task.pod_id, pod.status.name
-        )
+        # Check preconditions
+        if pod.status != PodStatus.IDLE:
+            logging.info("Task %i blocked: pod %i not idle.     [number of released tasks = %i]",
+                        task.task_id, task.pod_id, len(sim.released_tasks))
+            task_popped_is_not_idle = True
+            task_popped_not_idle.append(task)
+        else:
+            task_popped_is_not_idle = False
+
+    for t in task_popped_not_idle:
+        sim.released_tasks.push(t)
+
+    if task_popped_is_not_idle == True:
         return
-    
+
+
     robot_id = get_nearest_idle_robot(pod, sim.warehouse_status)
     if robot_id is None:
-        logging.info(
-            "[t=%.2f] No idle robots available | task_id=%d deferred",
-            sim.current_time, task.task_id
-        )
-        return
+        logging.info("Task %i blocked: no idle robots.",
+                    task.task_id)
+        return 
     
     # Remove task from released queue and update state
-    task = sim.released_tasks.pop()
     sim.active_tasks[task.task_id] = task
     robot = sim.warehouse_status.get_robot(robot_id)
     
@@ -288,12 +286,12 @@ def start_task(event: Event, sim) -> None:
     )
     sim.future_events.push(arrival_event)
     
-    logging.info(
-        "[t=%.2f] Task started | task_id=%d, pod_id=%d, robot_id=%d, "
-        "arrival_ws=%d, travel_time=%.2f",
-        sim.current_time, task.task_id, task.pod_id, robot_id,
-        first_visit.workstation_id, travel_time
-    )
+    idle_robots = sum(1 for r in sim.warehouse_status.robots if r.status == RobotStatus.IDLE)
+    logging.info("Task %i started: robot %i allocated to pod %i. Currently heading to workstation %i.   [idle_robots = %i/%i]",
+                 task.task_id, task.robot_id, task.pod_id, first_visit.workstation_id, idle_robots, len(sim.warehouse_status.robots))
+    
+    logging.info("Start task called: task_id=%i, in active_tasks=%s", 
+             task.task_id, task.task_id in sim.active_tasks)
 
 
 def arrival_pod_wst(event: Event, sim) -> None:
@@ -312,14 +310,11 @@ def arrival_pod_wst(event: Event, sim) -> None:
     robot = sim.warehouse_status.get_robot(task.robot_id)
     robot.position = workstation.position
     
-    logging.info(
-        "[t=%.2f] Pod arrived at workstation | task_id=%d, pod_id=%d, robot_id=%d, ws_id=%d",
-        sim.current_time, task.task_id, task.pod_id, task.robot_id, workstation.workstation_id
-    )
-    
+    logging.info("Pod %i arrived at workstation %i - currently workstation status = %s",
+                task.pod_id, current_visit.workstation_id, workstation.status.name)
+
     # Check workstation availability
     if workstation.status == WorkstationPickingStatus.IDLE:
-        # Start picking immediately
         picking_event = Event(
             time=sim.current_time,
             type=EventType.START_PICKING,
@@ -329,11 +324,8 @@ def arrival_pod_wst(event: Event, sim) -> None:
     else:
         # Queue pod for later processing
         workstation.picking_buffer.append(task.task_id)
-        logging.info(
-            "[t=%.2f] Pod queued (ws busy) | task_id=%d, pod_id=%d, ws_id=%d, queue_len=%d",
-            sim.current_time, task.task_id, task.pod_id, workstation.workstation_id,
-            len(workstation.picking_buffer)
-        )
+        logging.info("Pod queued at workstation.    [picking_buffer = %s]",
+                     workstation.picking_buffer)
 
 
 def start_picking(event: Event, sim) -> None:
@@ -344,24 +336,17 @@ def start_picking(event: Event, sim) -> None:
     based on pod process time and number of items.
     """
     
+    # Update workstation state
     task = event.info
     visit = task.stops[0]
     workstation = sim.warehouse_status.get_workstation(visit.workstation_id)
-    
-    # Update workstation state
     workstation.status = WorkstationPickingStatus.BUSY
     
-    # Compute picking duration
-    picking_time = workstation.estimated_picking_time(len(visit.items))
-    
-    logging.info(
-        "[t=%.2f] Picking started | task_id=%d, pod_id=%d, ws_id=%d, "
-        "num_items=%d, duration=%.2f",
-        sim.current_time, task.task_id, task.pod_id, visit.workstation_id,
-        len(visit.items), picking_time
-    )
-    
+    logging.info("Processing task %i at workstation %i: picking items %s",
+                 task.task_id, visit.workstation_id, visit.items)
+
     # Schedule picking completion
+    picking_time = workstation.estimated_picking_time(len(visit.items))
     end_event = Event(
         time=sim.current_time + picking_time,
         type=EventType.END_PICKING,
@@ -387,21 +372,52 @@ def end_picking(event: Event, sim) -> None:
     workstation.status = WorkstationPickingStatus.IDLE
     workstation.active_tasks.remove(task.task_id)
     
-    logging.info(
-        "[t=%.2f] Picking ended | task_id=%d, ws_id=%d, num_items=%d",
-        sim.current_time, task.task_id, completed_visit.workstation_id, len(completed_visit.items)
-    )
+    logging.info("Ended picking operation at workstation %i.    [picking_buffer len = %s]",
+                 completed_visit.workstation_id, workstation.picking_buffer)
     
-    # Remove completed visit from task
     task.stops.pop(0)
     
+    # Next stop or return
+    if len(task.stops) == 0:
+        pod = sim.warehouse_status.get_pod(task.pod_id)
+        return_travel_time = sim.warehouse_status.travel_time(
+            workstation.position,
+            pod.storage_location,
+            sim.RANDOM_GENERATOR
+        )
+        return_event = Event(
+            time=sim.current_time + return_travel_time,
+            type=EventType.RETURN_POD,
+            info=task
+        )
+        sim.future_events.push(return_event)
+        logging.info("Task %i completed: pod %i returning at its storage location.",
+                     task.task_id, task.pod_id)
+    else:
+        next_visit = task.stops[0]
+        next_workstation = sim.warehouse_status.get_workstation(next_visit.workstation_id)
+        travel_time = sim.warehouse_status.travel_time(
+            workstation.position,
+            next_workstation.position,
+            sim.RANDOM_GENERATOR
+        )
+        next_arrival_event = Event(
+            time=sim.current_time + travel_time,
+            type=EventType.ARRIVAL_POD_WST,
+            info=task
+        )
+        sim.future_events.push(next_arrival_event)
+        logging.info("Task %i heading towards next visit: robot %i heading to workstation %i.",
+                     task.task_id, task.robot_id, next_visit.workstation_id)
+
     # Update order states and close completed orders
+    completed_orders = []
     for order_id in completed_visit.orders:
         order = sim.orders_in_system.get(order_id)
         if order is not None:
             order.items_pending -= completed_visit.items
-            
             if len(order.items_pending) == 0:
+                completed_orders.append(order_id)
                 close_event = Event(
                     time=sim.current_time,
                     type=EventType.CLOSE_ORDER,
@@ -409,56 +425,11 @@ def end_picking(event: Event, sim) -> None:
                 )
                 sim.future_events.push(close_event)
 
-    
-    # Handle next stop or pod return
-    if len(task.stops) == 0:
-        # Pod has completed all stops - return to storage
-        pod = sim.warehouse_status.get_pod(task.pod_id)
-        robot = sim.warehouse_status.get_robot(task.robot_id)
-        
-        return_travel_time = sim.warehouse_status.travel_time(
-            workstation.position,
-            pod.storage_location,
-            sim.RANDOM_GENERATOR
-        )
-        
-        return_event = Event(
-            time=sim.current_time + return_travel_time,
-            type=EventType.RETURN_POD,
-            info=task
-        )
-        sim.future_events.push(return_event)
-        
-        logging.info(
-            "[t=%.2f] Task complete (all stops done) | task_id=%d, pod_id=%d, "
-            "robot_id=%d, return_time=%.2f",
-            sim.current_time, task.task_id, task.pod_id, task.robot_id, return_travel_time
-        )
-    else:
-        # More stops remaining
-        next_visit = task.stops[0]
-        next_workstation = sim.warehouse_status.get_workstation(next_visit.workstation_id)
-        robot = sim.warehouse_status.get_robot(task.robot_id)
-        
-        travel_time = sim.warehouse_status.travel_time(
-            workstation.position,
-            next_workstation.position,
-            sim.RANDOM_GENERATOR
-        )
-        
-        next_arrival_event = Event(
-            time=sim.current_time + travel_time,
-            type=EventType.ARRIVAL_POD_WST,
-            info=task
-        )
-        sim.future_events.push(next_arrival_event)
-        
-        logging.info(
-            "[t=%.2f] Task continuing | task_id=%d, next_ws=%d, travel_time=%.2f",
-            sim.current_time, task.task_id, next_visit.workstation_id, travel_time
-        )
-    
-    # Redesign tasks if optimization disabled
+    if len(completed_orders) > 0:
+        return
+
+
+    # Redesign tasks - If I just closed an order I skip this part
     if not sim.optimization_enabled:
         new_tasks, sim.task_counter = design_tasks_for_ws(
             workstation=workstation,
@@ -476,23 +447,22 @@ def end_picking(event: Event, sim) -> None:
                     info=new_task
                 )
                 sim.future_events.push(release_event)
-            
-            logging.info(
-                "[t=%.2f] New tasks designed after picking | ws_id=%d, num_tasks=%d",
-                sim.current_time, workstation.workstation_id, len(new_tasks)
-            )
 
+            logging.info("Redesigning %i task(s) for workstation %i",
+                         len(new_tasks), workstation.workstation_id)
 
-    # Triggering start_picking
+    # Trigger next picking if something in buffer
     if len(workstation.picking_buffer) > 0:
         task_id = workstation.picking_buffer.pop(0)
         task = sim.active_tasks[task_id]
         trigger_picking = Event(
-                    time=sim.current_time,
-                    type=EventType.START_PICKING,
-                    info=task
-                )
+            time=sim.current_time,
+            type=EventType.START_PICKING,
+            info=task
+        )
         sim.future_events.push(trigger_picking)
+        logging.info("Dequeued task %i from picking buffer at workstation %i.   [picking_buffer len = %i]",
+                     task_id, workstation.workstation_id, len(workstation.picking_buffer))
 
 
 def return_pod(event: Event, sim) -> None:
@@ -518,11 +488,15 @@ def return_pod(event: Event, sim) -> None:
     robot.position = pod.storage_location
     pod.status = PodStatus.IDLE
     sim.active_tasks.pop(task.task_id)
- 
-    logging.info(
-        "[t=%.2f] Pod returned to storage | task_id=%d, pod_id=%d, robot_id=%d",
-        sim.current_time, task.task_id, task.pod_id, task.robot_id
-    )
+    
+    idle_robots = sum(1 for r in sim.warehouse_status.robots if r.status == RobotStatus.IDLE)
+    logging.info("Pod %i returned to its storage location.",
+                 pod.pod_id)
+    logging.info("Robot %i is idle again.   [idle_robots = %i/%i]",
+                 robot.robot_id, idle_robots, len(sim.warehouse_status.robots))
+    logging.info("There are %i released tasks.",
+                 len(sim.released_tasks))
+
     
     # Start next task if any available
     if not sim.released_tasks.is_empty():
@@ -549,18 +523,17 @@ def close_order(event: Event, sim) -> None:
         f"pending items remaining"
     )
     
-    workstation = sim.warehouse_status.get_workstation(order.workstation_id)
-    
     # Update order state
+    workstation = sim.warehouse_status.get_workstation(order.workstation_id)
     order.status = OrderStatus.CLOSED
-    
-    
-    logging.info(
-        "[t=%.2f] Order closed | order_id=%d, ws_id=%d, total_items=%d",
-        sim.current_time, order.order_id, order.workstation_id, order.order_size
-    )
-    
     workstation.opened_orders.remove(order.order_id)
+
+    # Compute flow time time
+    flow_time = sim.current_time - order.arrival_time
+
+    logging.info("Order %i closed at workstatio %i: flow_time = %f.     [order_buffer len = %i] ",
+                 order.order_id, workstation.workstation_id, flow_time, len(workstation.order_buffer))
+
 
     # Open next queued order if available
     if len(workstation.order_buffer) > 0:
@@ -574,26 +547,23 @@ def close_order(event: Event, sim) -> None:
                 info=next_order
             )
             sim.future_events.push(open_event)
-
+            logging.info("Next order in buffer has id %i",
+                         next_order_id)
 
 
 def run_optimizer(event: Event, sim) -> None:
     """
-    Execute the optimization routine.
-
-    Placeholder for optimizer-based task scheduling. This function is
-    called periodically (every DELTA_T_OPT minutes) when optimization
-    is enabled.
-
-    Parameters
-    ----------
-    event : Event
-        Event (no payload required).
-    sim : Simulator
-        Simulator instance for state access and event scheduling.
-
-    Notes
-    -----
-    To be implemented with actual optimization logic (e.g., MIP solver).
+    Execute the optimization routine (placeholder).
     """
     pass
+
+
+
+# ── Utility ────────────────────────────────────────────────────────────────────
+
+def _count_closed(sim) -> int:
+    """Count closed orders for backlog display."""
+    return sum(
+        1 for o in sim.orders_in_system
+        if o.status == OrderStatus.CLOSED
+    )

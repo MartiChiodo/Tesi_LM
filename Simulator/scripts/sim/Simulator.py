@@ -6,7 +6,13 @@ from Simulator.scripts.core.entities import Order, Task, Event
 from Simulator.scripts.core.warehouse import Warehouse
 from Simulator.scripts.core.queues import PriorityQueue
 from Simulator.scripts.sim import event_handler as eh
-from Simulator.scripts.core.enums import OrderStatus, EventType, PodStatus
+from Simulator.scripts.core.enums import OrderStatus, EventType, PodStatus, RobotStatus
+
+
+# ── Costanti di formattazione ──────────────────────────────────────────────────
+_SEP_MAJOR = "═" * 72   # separatore principale (inizio/fine simulazione)
+_SEP_EVENT = "─" * 72   # separatore tra eventi
+_LOG_INTERVAL = 50       # stampa riepilogo di stato ogni N eventi
 
 
 class Simulator:
@@ -18,7 +24,6 @@ class Simulator:
     RANDOM_GENERATOR: Generator                             Istance of the numpy.random.Generator module to generate variables
     order_gen_config : list[float]                          Contains the parameters for order generation 
                                                                 [orders_per_hour, prob_1_item_order, geo_dist_param_order]
-
 
     current_time : float                                    Current simulation time.
     optimization_enabled : bool                             If True, use optimization-based decisions; otherwise use heuristic policies.
@@ -36,7 +41,7 @@ class Simulator:
         random_generator: Generator,
         order_gen_config: list[float],
         warehouse: Warehouse,
-        optimization_enabled : bool = False
+        optimization_enabled: bool = False
     ) -> None:
         
         self.RANDOM_GENERATOR = random_generator
@@ -56,66 +61,75 @@ class Simulator:
                     ws.workstation_id: PriorityQueue(key=lambda t: t.priority, id_attr='task_id')
                     for ws in warehouse.workstations
                 }
-        self.released_tasks: PriorityQueue[Task] = PriorityQueue(key=lambda t: (self.warehouse_status.pods[t.pod_id].status != PodStatus.IDLE, t.priority), id_attr='task_id')
+        self.released_tasks: PriorityQueue[Task] = PriorityQueue(
+            key=lambda t: (self.warehouse_status.pods[t.pod_id].status != PodStatus.IDLE, t.priority),
+            id_attr='task_id'
+        )
         self.active_tasks: dict[int, Task] = dict()
 
+        # Contatori per il riepilogo periodico
+        self._event_count = 0
+        self._closed_orders = 0
 
-    # DISPATCH TABLE
+
+    # Dispatch table 
     def _build_dispatch(self):
         return {
-            EventType.ARRIVAL_ORDER: eh.arrival_order,
-            EventType.RUN_OPTIMIZER: eh.run_optimizer,
-            EventType.RELEASE_TASK: eh.release_task,
-            EventType.START_TASK: eh.start_task,
+            EventType.ARRIVAL_ORDER:  eh.arrival_order,
+            EventType.RUN_OPTIMIZER:  eh.run_optimizer,
+            EventType.RELEASE_TASK:   eh.release_task,
+            EventType.START_TASK:     eh.start_task,
             EventType.ARRIVAL_POD_WST: eh.arrival_pod_wst,
-            EventType.OPEN_ORDER: eh.open_order,
-            EventType.START_PICKING: eh.start_picking,
-            EventType.END_PICKING: eh.end_picking,
-            EventType.CLOSE_ORDER: eh.close_order,
-            EventType.RETURN_POD: eh.return_pod,
+            EventType.OPEN_ORDER:     eh.open_order,
+            EventType.START_PICKING:  eh.start_picking,
+            EventType.END_PICKING:    eh.end_picking,
+            EventType.CLOSE_ORDER:    eh.close_order,
+            EventType.RETURN_POD:     eh.return_pod,
         }
-    
 
+
+    # Run 
     def run(self, time_horizon: float) -> None:
         """Run the simulation until the given time horizon."""
 
-        logging.info("\n*********************************\nSTART SIMULATION...\n")
+        logging.info("\n")
+        logging.info("=============================================")
+        logging.info("  START SIMULATION ... ")
+        
 
         dispatch = self._build_dispatch()
 
-        # Schedule first event
-        e = Event(time = 1e-8, type = EventType.ARRIVAL_ORDER)
-        self.future_events.push(item= e)
+        e = Event(time=1e-8, type=EventType.ARRIVAL_ORDER)
+        self.future_events.push(item=e)
 
-        # MAIN DES LOOP 
         self.current_time = 0
         while not self.future_events.is_empty() and self.current_time < time_horizon:
 
-            # Retrievent next event to process
             event_to_process = self.future_events.pop()
             self.current_time = event_to_process.time
+            self._event_count += 1
 
+            # Separatore visivo tra eventi
+            logging.info("")
             logging.info(
-                "CLOCK = %.4f --> processing %s",
+                "   EVENT NUM %-4d  current_time = %7.4f  %-20s  [number of future events = %d]",
+                self._event_count,
                 self.current_time,
-                event_to_process.type.name
-                )
-            
-            # Process event
+                event_to_process.type.name,
+                len(self.future_events)
+            )
+
             self._process_event(event_to_process, dispatch)
 
-        logging.info("\nEND SIMULATION\n")
 
-        print(self.orders_in_system)
-
+        logging.info("\n")
+        logging.info("  END SIMULATION.")
 
 
     def _process_event(self, event: Event, dispatch: dict) -> None:
         """Dispatch event to the corresponding handler."""
-
         handler = dispatch.get(event.type)
         if handler is None:
             raise ValueError(f"Unhandled event type: {event.type}")
-
-        # Call handler with full simulator context
         handler(event, self)
+
