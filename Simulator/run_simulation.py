@@ -32,18 +32,18 @@ def main():
     logging.info("Initializing warehouse ...")
 
     warehouse = Warehouse(
-        gen                   = gen,
-        num_pods              = config.NUM_PODS,
-        num_skus              = config.NUM_SKUS,
-        num_robots            = config.NUM_ROBOTS,
-        num_workstations      = config.NUM_WORKSTATIONS,
-        grid_rows             = config.GRID_ROWS,
-        grid_cols             = config.GRID_COLS,
-        ws_order_cap          = config.WS_ORDER_CAPACITY,
-        ws_workload_cap       = config.WS_WORKLOAD_CAPACITY,
-        robot_speed           = config.ROBOT_SPEED,
-        pod_proc_time         = config.POD_PROCESS_TIME,
-        item_proc_time        = config.ITEM_PROCESS_TIME
+        random_generator                = gen,
+        num_pods                        = config.NUM_PODS,
+        num_skus                        = config.NUM_SKUS,
+        num_robots                      = config.NUM_ROBOTS,
+        num_workstations                = config.NUM_WORKSTATIONS,
+        grid_rows                       = config.GRID_ROWS,
+        grid_cols                       = config.GRID_COLS,
+        ws_order_capacity               = config.WS_ORDER_CAPACITY,
+        ws_released_task_capacity       = config.WS_WORKLOAD_CAPACITY,
+        robot_speed                     = config.ROBOT_SPEED,
+        pod_process_time                = config.POD_PROCESS_TIME,
+        item_process_time               = config.ITEM_PROCESS_TIME
     )
  
     logging.info(f"Warehouse initialized: {warehouse}")
@@ -61,9 +61,9 @@ def main():
 
     ### SIMULATION
     sim = Simulator(
-        gen= gen,
-        order_gen_params=[config.INTERRARIVAL_TIME_ORDER, config.PROB_1_ITEM_ORDER, config.GEO_DIST_PARAM_ORDER],
-        warehouse= warehouse
+        random_generator = gen,
+        order_gen_config =[config.INTERRARIVAL_TIME_ORDER, config.PROB_1_ITEM_ORDER, config.GEO_DIST_PARAM_ORDER],
+        warehouse = warehouse
     )
     sim.run(60)
 

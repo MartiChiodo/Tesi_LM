@@ -64,7 +64,27 @@ class PriorityQueue(Generic[T]):
 
         item_id = self._get_id(item)
         if item_id is not None:
-            self._index[item_id] = item
+            self._index[item_id] = item  # ← sempre overwrite
+
+        return item
+    
+
+    def update(self, item: T) -> T:
+        """
+        Overwrite an existing item (by id) with a new version.
+        """
+        if self._id_attr is None:
+            raise ValueError("update requires id_attr to be set")
+
+        item_id = self._get_id(item)
+        if item_id is None:
+            raise ValueError("Item must have a valid id")
+
+        # overwrite logico (la vecchia entry diventa stale)
+        self._index[item_id] = item
+
+        heapq.heappush(self._heap, (self._key(item), self._counter, item))
+        self._counter += 1
 
         return item
 
@@ -75,24 +95,37 @@ class PriorityQueue(Generic[T]):
         """
         Remove and return the highest-priority (lowest key) item.
         """
-        if self.is_empty():
-            raise IndexError("pop from an empty priority queue")
+        while self._heap:
+            _, _, item = heapq.heappop(self._heap)
 
-        _, _, item = heapq.heappop(self._heap)
+            item_id = self._get_id(item)
+            if item_id is not None:
+                # valido solo se è ancora l'oggetto corrente
+                if self._index.get(item_id) is not item:
+                    continue
+                self._index.pop(item_id, None)
 
-        item_id = self._get_id(item)
-        if item_id is not None:
-            self._index.pop(item_id, None)
+            return item
 
-        return item
+        raise IndexError("pop from an empty priority queue")
+    
 
     def peek(self) -> T:
         """
         Return the highest-priority item without removing it.
         """
-        if self.is_empty():
-            raise IndexError("peek at an empty priority queue")
-        return self._heap[0][2]
+        while self._heap:
+            _, _, item = self._heap[0]
+            item_id = self._get_id(item)
+
+            if item_id is not None and self._index.get(item_id) is not item:
+                heapq.heappop(self._heap)
+                continue
+
+            return item
+
+        raise IndexError("peek at an empty priority queue")
+    
 
     def get(self, id: int) -> T | None:
         """
@@ -114,6 +147,9 @@ class PriorityQueue(Generic[T]):
         Remove and return up to *n* items in priority order.
         """
         return [self.pop() for _ in range(min(n, len(self)))]
+    
+
+
 
     
     # Utilities 

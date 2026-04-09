@@ -1,137 +1,216 @@
+"""
+Scheduling and assignment policies for the warehouse simulator.
+
+This module implements heuristic policies for order-to-workstation assignment,
+pod selection for task design, and robot allocation.
+"""
+
+import logging
 from Simulator.scripts.core.entities import Task, Visit
 from Simulator.scripts.core.enums import PodStatus, RobotStatus
 
+
 def assign_order_to_workstation_policy(order, workstations) -> int:
     """
-    Assign an order to the workstation with the shortest order queue.
+    Assign an order to the workstation with the shortest queue.
+
+    Uses a greedy policy: selects the workstation with the minimum
+    combined size of opened orders and pending orders in buffer.
+    Ties are broken by workstation ID (lower ID preferred).
 
     Parameters
     ----------
-    order : Order                    The order to be assigned.
-    workstations : list[Workstation] List of available workstations.
-
-    Returns
-    -------
-    int  workstation_id of the selected workstation.
+    order : Order                      Order to assign (used only for logging, not modified).
+    workstations : list[Workstation]   Available workstations to choose from.
     """
-    return min(workstations, key=lambda ws: len(ws.order_buffer) + len(ws.opened_orders)).workstation_id
+    
+    if not workstations:
+        raise ValueError("Cannot assign order: no workstations available")
+    
+    selected_workstation = min(
+        workstations,
+        key=lambda ws: len(ws.order_buffer) + len(ws.opened_orders)
+    )
+    
+    return selected_workstation.workstation_id
 
 
-
-def design_tasks_for_ws(workstation, warehouse, arrived_orders, task_counter) -> list[Task]:
+def design_tasks_for_ws(
+    workstation,
+    warehouse,
+    orders_in_system,
+    task_counter,
+    active_tasks
+) -> list[Task]:
     """
-    Select the best pods to send to a workstation using a greedy set cover approach.
+    Design tasks for a workstation using greedy set cover.
 
-    Iteratively selects the idle pod that covers the most uncovered SKUs
-    across all open orders at the workstation (pile-on maximization).
-    Ties are broken by Manhattan distance to the workstation.
-    At most podqueue_capacity pods are selected.
+    Iteratively selects idle pods that maximize SKU coverage for open
+    orders at the workstation (pile-on maximization). Each pod is converted
+    to a Task with a single Visit grouping all contributing orders.
 
-    Each time a pod is selected, its SKUs are removed from the uncovered
-    pool, avoiding redundant deliveries. A single Visit per pod groups
-    all contributing orders and their SKUs together.
+    Stops when either:
+    1. Workload capacity is reached
+    2. All open order SKUs are covered
+    3. No more pods can contribute
 
     Parameters
     ----------
-    workstation : Workstation       Target workstation.
-    warehouse : Warehouse           Full warehouse state.
-    arrived_orders : PriorityQueue  All arrived orders (for SKU lookup).
-    task_counter : int              Current task ID counter (incremented externally).
-
-    Returns
-    -------
-    list[Task]  Tasks to release, one per selected pod, sorted by selection order.
+    workstation : Workstation                  Target workstation with opened_orders containing active orders.
+    warehouse : Warehouse                      Warehouse instance for pod and distance queries.
+    orders_in_system : PriorityQueue[Order]    All orders in the system (for SKU lookup).
+    task_counter : int                         Current task ID counter (auto-incremented for new tasks).
+    active_tasks : list[Task]                  Tasks currently allocated to robots relatid to this workstation
     """
-
-    # Collect uncovered SKUs across all open orders
-    remaining_skus = set()
+    
+    # Collect all uncovered SKUs across open orders at target workstation
+    uncovered_skus = set()
     for order_id in workstation.opened_orders:
-        order = arrived_orders.get(order_id)
+        order = orders_in_system.get(order_id)
         if order is not None:
-            remaining_skus.update(order.items_pending)
+            uncovered_skus.update(order.items_pending)
 
-    if not remaining_skus:
-        return []
-
-    # Greedy set cover
+    for id_t in workstation.active_tasks:
+        t = active_tasks[id_t]
+        for v in t.stops:
+            if v.workstation_id == workstation.workstation_id:
+                uncovered_skus -= v.items
+    
+    if not uncovered_skus:
+        return [], task_counter
+    
+    # Track which pods are already selected in active tasks
     already_selected = set()
-    for v in workstation.active_tasks:
-        already_selected.add(v.items)
-
+    for visit in workstation.active_tasks:
+        already_selected.add(visit.pod_id if hasattr(visit, 'pod_id') else id(visit))
+    
     tasks = []
-
-    while len(tasks) < workstation.workload_capacity - len(workstation.active_tasks) and remaining_skus:
-
-        best_pod, best_score, best_dist = None, 0, float('inf')
-
+    num_capacity = workstation.released_task_capacity - len(workstation.active_tasks)
+    set_task_id_to_be_rewritten = workstation.released_tasks.copy()
+    
+    # Greedy selection loop
+    while len(tasks) < num_capacity and uncovered_skus:
+        best_pod = None
+        best_pile_on = 0
+        best_distance = float('inf')
+        
+        # Find pod with best pile-on score
         for pod in warehouse.pods:
+
             if pod.pod_id in already_selected:
                 continue
-
-            pile_on = len(set(pod.items) & remaining_skus)
+            
+            # Compute pile-on: how many uncovered SKUs this pod has
+            pile_on = len(set(pod.items) & uncovered_skus)
             if pile_on == 0:
                 continue
-
-            distance = warehouse.manhattan_distance(pod.storage_location, workstation.position)
-
-            if pile_on > best_score or (pile_on == best_score and distance < best_dist):
-                best_pod, best_score, best_dist = pod, pile_on, distance
-
+            
+            # Compute distance as tiebreaker
+            distance = warehouse.manhattan_distance(
+                pod.storage_location,
+                workstation.position
+            )
+            
+            # Update best pod if this one is better
+            if (pile_on > best_pile_on or 
+                (pile_on == best_pile_on and distance < best_distance)):
+                best_pod = pod
+                best_pile_on = pile_on
+                best_distance = distance
+        
+        # If no more pods can contribute, stop
         if best_pod is None:
             break
-
-        # Build single Visit grouping all contributing orders
-        contributing_orders = []
-        skus_for_visit = []
+        
+        # Build Visit: group all orders that benefit from this pod
+        contributing_order_ids = []
+        skus_in_visit = []
+        
         for order_id in workstation.opened_orders:
-            order = arrived_orders.get(order_id)
+            order = orders_in_system.get(order_id)
             if order is None:
                 continue
-            skus_for_order = [s for s in best_pod.items if s in set(order.items_pending)]
-            if skus_for_order:
-                contributing_orders.append(order_id)
-                skus_for_visit.extend(skus_for_order)
+            
+            # Find SKUs from this pod that match order requirements
+            order_matching_skus = [
+                sku for sku in best_pod.items
+                if sku in order.items_pending
+            ]
+            
+            if order_matching_skus:
+                contributing_order_ids.append(order_id)
+                skus_in_visit.extend(order_matching_skus)
+        
+        # Create task with single visit
+        if len(set_task_id_to_be_rewritten) > 0:
+            t_id = set_task_id_to_be_rewritten.pop()
+        else:
+            t_id = task_counter 
+            task_counter += 1 
 
-        tasks.append(Task(
-            task_id=task_counter + len(tasks),
+        t = Task(
+            task_id=t_id,
             pod_id=best_pod.pod_id,
-            robot_id= None,
+            robot_id=None,
             stops=[Visit(
                 workstation_id=workstation.workstation_id,
-                orders=set(contributing_orders),
-                items=set(skus_for_visit)
+                orders=set(contributing_order_ids),
+                items=set(skus_in_visit)
             )],
             priority=task_counter + len(tasks),
-        ))
-
+        )
+        
+        tasks.append(t)
         already_selected.add(best_pod.pod_id)
-        remaining_skus -= set(best_pod.items)
-
-    return tasks
-
+        uncovered_skus -= set(best_pod.items)
+        
+    logging.info(
+        "Task design completed | ws_id=%d, num_tasks=%d, "
+        "total_items=%d, remaining_skus=%d",
+        workstation.workstation_id,
+        len(tasks),
+        sum(len(task.stops[0].items) for task in tasks),
+        len(uncovered_skus)
+    )
+    
+    return tasks, task_counter
 
 
 def get_nearest_idle_robot(pod, warehouse) -> int | None:
     """
-    Return the robot_id of the nearest idle robot to a given pod.
+    Find the nearest idle robot to a given pod.
 
-    Ties are broken by robot_id. Returns None if no idle robot is available.
+    Searches all robots, selects the IDLE robot with minimum Manhattan
+    distance to the pod's location. Ties are broken by robot ID (lower ID
+    preferred for determinism).
 
     Parameters
     ----------
-    pod : Pod             Target pod.
-    warehouse : Warehouse Full warehouse state.
-
-    Returns
-    -------
-    int | None  robot_id of the nearest idle robot, or None if none available.
+    pod : Pod               Target pod at storage_location.
+    warehouse : Warehouse   Warehouse instance for robot and distance queries.
     """
-    best_robot, best_dist = None, float('inf')
-
+    
+    best_robot = None
+    best_distance = float('inf')
+    
     for robot in warehouse.robots:
-        if robot.status == RobotStatus.IDLE:
-            dist = warehouse.manhattan_distance(robot.position, pod.storage_location)
-            if dist < best_dist or (dist == best_dist and robot.robot_id < best_robot.robot_id):
-                best_robot, best_dist = robot, dist
-
-    return best_robot.robot_id if best_robot is not None else None
+        # Only consider idle robots
+        if robot.status != RobotStatus.IDLE:
+            continue
+        
+        distance = warehouse.manhattan_distance(
+            robot.position,
+            pod.storage_location
+        )
+        
+        # Update if this robot is closer (or tie-break by ID)
+        if (distance < best_distance or 
+            (distance == best_distance and 
+             (best_robot is None or robot.robot_id < best_robot.robot_id))):
+            best_robot = robot
+            best_distance = distance
+    
+    if best_robot is not None:
+        return best_robot.robot_id
+    else:
+        return None

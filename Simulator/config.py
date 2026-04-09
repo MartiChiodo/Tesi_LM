@@ -6,7 +6,7 @@
 NUM_PODS         = 100
 NUM_SKUS         = 1000
 NUM_ROBOTS       = 20
-NUM_WORKSTATIONS = 9
+NUM_WORKSTATIONS = 1
 
 GRID_ROWS = 10       # number of rows for the pod grid
 GRID_COLS = 10       # number of columns for the pod grid
@@ -23,7 +23,7 @@ WS_WORKLOAD_CAPACITY = 3   # max pods waiting in pod_queue per workstation
 # Parameters for order generation (Barnhart et al. 2024 approach)
 PROB_1_ITEM_ORDER = 0.5
 GEO_DIST_PARAM_ORDER = 0.65      # takes value in {0.25, 0.35, 0.45, 0.65}
-INTERRARIVAL_TIME_ORDER = 0.34   # equivalent of 175 orders per hour (unit time : minutes)
+INTERRARIVAL_TIME_ORDER = 1   # equivalent of 175 orders per hour (unit time : minutes)
 
 
 
