@@ -53,11 +53,9 @@ def main():
 
     # --- TODO ---
     # SKU distribution among pods
-    # Initialize SimulatorState and EmulatorState
-    # Schedule initial events (ARRIVAL_ORDER, RUN_OPTIMIZER)
-    # Run DES loop
-    # event_handler.py con le funzioni per processare gli eventi in base al tipo
-    # togliere gli append ma creare le liste come [None]*Num_elem
+    # Define RUN_OPTIMIZER handler
+    # Creare uno StatManager per le statistiche
+    # Sistemare la configurazione dei parametri
 
     ### SIMULATION
     sim = Simulator(
