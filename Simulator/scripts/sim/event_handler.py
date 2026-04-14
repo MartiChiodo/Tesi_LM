@@ -118,6 +118,9 @@ def open_order(event: Event, sim) -> None:
     # Update order state
     o.status = OrderStatus.OPEN
     workstation.opened_orders.add(o.order_id)
+
+    sim.STAT_MANAGER.update_statistic(type = 'WS_AVG_OO', 
+                                      info =  [workstation.workstation_id, len(workstation.opened_orders), sim.current_time])
     
     logging.info("Order %i (skus required = %s) opened at workstation %i.   [open_orders = %i/%i]",
                  o.order_id, o.items_required, o.workstation_id, len(workstation.opened_orders), workstation.order_capacity)
@@ -229,7 +232,7 @@ def start_task(event: Event, sim) -> None:
     while task_popped_is_not_idle:
 
         if sim.released_tasks.is_empty():
-            return
+            break
 
         task = sim.released_tasks.pop()
         pod = sim.warehouse_status.get_pod(task.pod_id)
@@ -263,6 +266,9 @@ def start_task(event: Event, sim) -> None:
     pod.status = PodStatus.BUSY
     robot.status = RobotStatus.BUSY
     task.robot_id = robot_id
+
+    # Update Statistic for Robot Frequency
+    sim.STAT_MANAGER.update_statistic(type = 'RB_FREQ', info = [robot.robot_id, RobotStatus.BUSY, sim.current_time])
     
     # Move visits from pending to active at all workstations
     for visit in task.stops:
@@ -341,6 +347,10 @@ def start_picking(event: Event, sim) -> None:
     visit = task.stops[0]
     workstation = sim.warehouse_status.get_workstation(visit.workstation_id)
     workstation.status = WorkstationPickingStatus.BUSY
+
+    # Update Statistic for Ws Frequency
+    sim.STAT_MANAGER.update_statistic(type = 'WS_FREQ', 
+                                      info = [workstation.workstation_id, WorkstationPickingStatus.BUSY, sim.current_time])
     
     logging.info("Processing task %i at workstation %i: picking items %s",
                  task.task_id, visit.workstation_id, visit.items)
@@ -371,6 +381,10 @@ def end_picking(event: Event, sim) -> None:
     # Update workstation status
     workstation.status = WorkstationPickingStatus.IDLE
     workstation.active_tasks.remove(task.task_id)
+
+    # Update Statistic for Ws Frequency
+    sim.STAT_MANAGER.update_statistic(type = 'WS_FREQ', 
+                                      info = [workstation.workstation_id, WorkstationPickingStatus.IDLE, sim.current_time])
     
     logging.info("Ended picking operation at workstation %i.    [picking_buffer len = %s]",
                  completed_visit.workstation_id, workstation.picking_buffer)
@@ -488,6 +502,9 @@ def return_pod(event: Event, sim) -> None:
     robot.position = pod.storage_location
     pod.status = PodStatus.IDLE
     sim.active_tasks.pop(task.task_id)
+
+    # Update Statistic for Robot Frequency
+    sim.STAT_MANAGER.update_statistic(type = 'RB_FREQ', info = [robot.robot_id, RobotStatus.IDLE, sim.current_time])
     
     idle_robots = sum(1 for r in sim.warehouse_status.robots if r.status == RobotStatus.IDLE)
     logging.info("Pod %i returned to its storage location.",
@@ -528,11 +545,16 @@ def close_order(event: Event, sim) -> None:
     order.status = OrderStatus.CLOSED
     workstation.opened_orders.remove(order.order_id)
 
-    # Compute flow time time
+    # Update stat
+    sim.STAT_MANAGER.update_statistic(type = 'WS_AVG_OO', 
+                                      info =  [workstation.workstation_id, len(workstation.opened_orders), sim.current_time])
+
+    # Compute flow time time and updating statistics
+    sim.STAT_MANAGER.update_statistic(type = 'OFT', info = [order, sim.current_time])
     flow_time = sim.current_time - order.arrival_time
 
-    logging.info("Order %i closed at workstatio %i: flow_time = %f.     [order_buffer len = %i] ",
-                 order.order_id, workstation.workstation_id, flow_time, len(workstation.order_buffer))
+    logging.info("Order %i closed at workstation %i: flow_time = %f.     [order_buffer len = %i] [open_orders = %i / %i] ",
+                 order.order_id, workstation.workstation_id, flow_time, len(workstation.order_buffer), len(workstation.opened_orders), workstation.order_capacity)
 
 
     # Open next queued order if available

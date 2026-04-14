@@ -11,20 +11,20 @@ class OrderStatus(Enum):
 
 class RobotStatus(Enum):
     """Status of a robot inside the emulator."""
-    IDLE = auto()  # available, position known
-    BUSY = auto()  # executing a task, carrying a pod
+    IDLE = 0  # available, position known
+    BUSY = 1  # executing a task, carrying a pod
 
 
 class PodStatus(Enum):
     """Status of a pod inside the emulator."""
-    IDLE = auto()  # resting at its home cell in the grid
-    BUSY = auto()  # in transit or waiting at a workstation
+    IDLE = 0  # resting at its home cell in the grid
+    BUSY = 1  # in transit or waiting at a workstation
 
 
 class WorkstationPickingStatus(Enum):
     """Whether a workstation is currently executing a picking action."""
-    IDLE = auto()  # no picking in progress
-    BUSY = auto()  # picking in progress on an arrived pod
+    IDLE = 0  # no picking in progress
+    BUSY = 1  # picking in progress on an arrived pod
 
 
 class EventType(Enum):

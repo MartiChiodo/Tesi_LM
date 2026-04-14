@@ -6,7 +6,8 @@ from Simulator.scripts.core.entities import Order, Task, Event
 from Simulator.scripts.core.warehouse import Warehouse
 from Simulator.scripts.core.queues import PriorityQueue
 from Simulator.scripts.sim import event_handler as eh
-from Simulator.scripts.core.enums import OrderStatus, EventType, PodStatus, RobotStatus
+from Simulator.scripts.core.enums import OrderStatus, EventType, PodStatus
+from Simulator.scripts.stat.StatManager import StatManager
 
 
 
@@ -17,6 +18,7 @@ class Simulator:
     Attributes
     ----------
     RANDOM_GENERATOR: Generator                             Istance of the numpy.random.Generator module to generate variables
+    STAT_MANAGER: StatManager                               Istance of StatManager to manage the statistics
     order_gen_config : list[float]                          Contains the parameters for order generation 
                                                                 [orders_per_hour, prob_1_item_order, geo_dist_param_order]
 
@@ -40,6 +42,8 @@ class Simulator:
     ) -> None:
         
         self.RANDOM_GENERATOR = random_generator
+        self.STAT_MANAGER = StatManager(warehouse, warm_up=10)
+
         self.order_gen_config = order_gen_config
         self.optimization_enabled = optimization_enabled
         self.warehouse_status = warehouse
@@ -107,7 +111,7 @@ class Simulator:
             # Separatore visivo tra eventi
             logging.info("")
             logging.info(
-                "   EVENT NUM %-4d  current_time = %7.4f  %-20s  [number of future events = %d]",
+                "   EVENT NUM %-4d  current_time = %7.4f min  %-20s  [number of future events = %d]",
                 self._event_count,
                 self.current_time,
                 event_to_process.type.name,
@@ -115,6 +119,15 @@ class Simulator:
             )
 
             self._process_event(event_to_process, dispatch)
+
+        
+
+        logging.info("\n")
+        logging.info("writing Statistics Report ... ")
+        self.STAT_MANAGER.return_statistics()
+
+        logging.info("Statistic Manager Resetted")
+        self.STAT_MANAGER.reset_statistics()
 
 
         logging.info("\n")
