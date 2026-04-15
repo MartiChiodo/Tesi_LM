@@ -49,7 +49,10 @@ class Simulator:
         self.warehouse_status = warehouse
 
         self.current_time = 0
-        self.future_events: PriorityQueue[Event] = PriorityQueue(key=lambda e: e.time)
+
+        # Future events queue --> priority is determined by when events are scheduled but release 
+        # task events have always the priority to avoid incostincies in tasks released.
+        self.future_events: PriorityQueue[Event] = PriorityQueue(key=lambda e: (e.time, e.type != EventType.RELEASE_TASK))
         self.orders_counter = 0
         self.orders_in_system: PriorityQueue[Order] = PriorityQueue(
                                 key=lambda o: (o.status != OrderStatus.BACKLOG, o.arrival_time), 

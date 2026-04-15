@@ -204,7 +204,7 @@ class StatManager:
 
             for i in range(len(usage)):
                 if name == "WORKSTATIONS":
-                    avg_oo = self.workstation_avg_open_order[i]/(self.ws_picking_last_clock[i] - self.WARM_UP)
+                    avg_oo = self.workstation_avg_open_order[i]/(self.workstation_order_last_clock[i] - self.WARM_UP)
                     lines.append(
                         f"  {i:<6} {usage[i,0]:>10.2f} {usage[i,1]:>10.2f} "
                         f"{util[i]:>7.1%} {avg_oo:>10.2f}"

@@ -225,7 +225,11 @@ def start_task(event: Event, sim) -> None:
     and schedules pod arrival at the first workstation.
     """
 
-    assert not sim.released_tasks.is_empty(), "START_TASK called but no released tasks to start."
+    # If many OPEN_ORDER events occur at the same time, tasks can be released and the overwritten
+    # Consequently START_TASK can be called by overwritten tasks --> I need a validation
+    if sim.released_tasks.is_empty():
+        return
+
     
     task_popped_is_not_idle = True
     task_popped_not_idle = []
@@ -386,8 +390,8 @@ def end_picking(event: Event, sim) -> None:
     sim.STAT_MANAGER.update_statistic(type = 'WS_FREQ', 
                                       info = [workstation.workstation_id, WorkstationPickingStatus.IDLE, sim.current_time])
     
-    logging.info("Ended picking operation at workstation %i.    [picking_buffer len = %s]",
-                 completed_visit.workstation_id, workstation.picking_buffer)
+    logging.info("Ended picking operation for orders %s at workstation %i.    [picking_buffer len = %s]",
+                 completed_visit.orders, completed_visit.workstation_id, workstation.picking_buffer)
     
     task.stops.pop(0)
     
