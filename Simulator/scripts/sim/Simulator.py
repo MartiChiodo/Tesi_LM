@@ -111,12 +111,13 @@ class Simulator:
             self.current_time = event_to_process.time
             self._event_count += 1
 
-            # Separatore visivo tra eventi
-            logging.info("")
-            logging.info(
-                "   EVENT NUM %-4d  current_time = %7.4f min  %-20s  [number of future events = %d]",
+            min, sec = divmod(self.current_time, 60)
+            hours, min = divmod(min, 60)
+            logging.debug("")
+            logging.debug(
+                "   EVENT NUM %-4d  current_time = %02d:%02d:%02d   %-20s  [number of future events = %d]",
                 self._event_count,
-                self.current_time,
+                hours, min, sec,
                 event_to_process.type.name,
                 len(self.future_events)
             )

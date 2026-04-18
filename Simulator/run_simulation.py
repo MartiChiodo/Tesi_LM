@@ -14,9 +14,9 @@ def main():
     Main entry point: initializes the warehouse and launches the simulation.
     """
 
-    # --- Logger setup ---
+    #  Logger setup (level = logging.INFO for core info, logging.DEBUG for detailed simulator precess)
     logging.basicConfig(
-        filename=os.path.join(os.path.dirname(__file__), "logs.log"),
+        filename=os.path.join(os.path.dirname(__file__), "output/logs.log"),
         encoding="utf-8",
         level=logging.INFO,
         datefmt="%H:%M:%S",
@@ -54,7 +54,6 @@ def main():
     # --- TODO ---
     # SKU distribution among pods
     # Define RUN_OPTIMIZER handler
-    # Creare uno StatManager per le statistiche
     # Sistemare la configurazione dei parametri
 
     ### SIMULATION
@@ -63,7 +62,7 @@ def main():
         order_gen_config =[config.INTERRARIVAL_TIME_ORDER, config.PROB_1_ITEM_ORDER, config.GEO_DIST_PARAM_ORDER],
         warehouse = warehouse
     )
-    sim.run(60*24)
+    sim.run(config.TIME_HORIZON)
 
 
 if __name__ == "__main__":

@@ -1,31 +1,28 @@
 import heapq
-from typing import Callable, Generic, TypeVar  
-
-
-
-### HEAP QUEUE - used for event queue and order backlog
+from typing import Callable, Generic, TypeVar
 
 T = TypeVar("T")
 
+_BLOAT_FACTOR = 2  # compact() triggers when heap size > BLOAT_FACTOR * active_size
+
+
 class PriorityQueue(Generic[T]):
     """
-    Generic min-heap priority queue with stable ordering and O(1) id lookup.
+    Generic min-heap priority queue with lazy deletion and O(1) id-based lookup.
 
-    Uses a monotonic counter to break ties, avoiding direct comparison
-    between items. Supports any type T via a key function.
-
-    If id_attr is specified, items are registered in an internal dictionary
-    enabling O(1) lookup via get(). Otherwise get() performs an O(n) scan.
+    Internally uses a (priority, counter, item) heap. Stale entries left by
+    ``update`` and ``remove`` are skipped on extraction rather than eagerly
+    removed, keeping mutation O(log n). Physical cleanup is deferred to
+    ``compact()``, called automatically when heap bloat exceeds ``_BLOAT_FACTOR``.
 
     Parameters
     ----------
-    key : Callable[[T], float], optional
-        Function mapping an item to its priority (lower = higher priority).
-        Defaults to the identity function, so T must support float conversion
-        or direct comparison if omitted.
-    id_attr : str | None, optional
-        Name of the attribute to use as unique identifier for O(1) lookup.
-        E.g. 'order_id', 'task_id', 'event_id'. If None, get() is O(n).
+    key : Callable[[T], float]
+        Maps an item to its priority scalar (lower = higher priority).
+    id_attr : str | None
+        Attribute name used as unique item identifier. Required for
+        ``update``, ``remove``, and O(1) ``get``. If None, those operations
+        either raise or fall back to O(n) scan.
     """
 
     def __init__(
@@ -38,162 +35,163 @@ class PriorityQueue(Generic[T]):
         self._key = key
         self._id_attr = id_attr
         self._index: dict[int, T] = {}
+        self.active_size: int = 0
 
-        self.active_size = 0
+    #  Internal 
 
-    
-    # Internal helpers
+    def _id(self, item: T) -> int | None:
+        """Return item id if id_attr is set, else None."""
+        return getattr(item, self._id_attr, None) if self._id_attr else None
 
-    def _get_id(self, item: T) -> int | None:
-        """Return the item's id if id_attr was specified, else None."""
-        if self._id_attr is None:
-            return None
-        return getattr(item, self._id_attr, None)
+    def _is_live(self, item: T) -> bool:
+        """True if item is still the current version in the index."""
+        item_id = self._id(item)
+        return item_id is None or self._index.get(item_id) is item
 
-    # Insertion
-
-    def push(self, item: T) -> T:
-        """
-        Add an item to the queue.
-        """
-        priority = self._key(item)
-
-        if isinstance(priority, (int, float)) and priority < 0:
-            raise ValueError(f"Priority must be non-negative, got {priority}")
-
-        heapq.heappush(self._heap, (priority, self._counter, item))
-        self._counter += 1
-        self.active_size += 1
-
-        item_id = self._get_id(item)
-        if item_id is not None:
-            self._index[item_id] = item  # ← sempre overwrite
-
-        return item
-    
-
-    def update(self, item: T) -> T:
-        """
-        Overwrite an existing item (by id) with a new version.
-        Removes old entries from the index, preventing duplicates.
-        """
-        if self._id_attr is None:
-            raise ValueError("update requires id_attr to be set")
-
-        item_id = self._get_id(item)
-        if item_id is None:
-            raise ValueError("Item must have a valid id")
-
-        # Mark the old item as stale by removing it from the index
-        old_item = self._index.get(item_id)
-        if old_item is not None:
-            # old_item stays in heap but will be ignored by pop/peek
-            self.active_size -= 1 
-            self._index.pop(item_id)
-
-        # Push new item onto heap
+    def _push_raw(self, item: T) -> None:
         heapq.heappush(self._heap, (self._key(item), self._counter, item))
         self._counter += 1
 
-        # Register new item in index
-        self._index[item_id] = item
-        self.active_size += 1 
+    def _maybe_compact(self) -> None:
+        if len(self._heap) > _BLOAT_FACTOR * max(self.active_size, 1):
+            self.compact()
+
+    #  Insertion 
+
+    def push(self, item: T) -> T:
+        """Add *item* to the queue. Raises ValueError on negative priority."""
+        priority = self._key(item)
+        if isinstance(priority, (int, float)) and priority < 0:
+            raise ValueError(f"Priority must be non-negative, got {priority}")
+
+        self._push_raw(item)
+        self.active_size += 1
+
+        item_id = self._id(item)
+        if item_id is not None:
+            self._index[item_id] = item
 
         return item
 
-    
-    # Retrieval 
+    def update(self, item: T) -> T:
+        """
+        Replace the existing entry for *item* (matched by id) with a new one.
+
+        The old heap entry is lazily invalidated; the new one is pushed.
+        Raises ValueError if id_attr is not set or item has no valid id.
+        """
+        if self._id_attr is None:
+            raise ValueError("update() requires id_attr to be set")
+
+        item_id = self._id(item)
+        if item_id is None:
+            raise ValueError("Item must have a valid id")
+
+        if item_id in self._index:
+            self.active_size -= 1  # evict old logical entry
+
+        self._index[item_id] = item
+        self._push_raw(item)
+        self.active_size += 1
+
+        self._maybe_compact()
+        return item
+
+    #  Removal 
 
     def pop(self) -> T:
-        """
-        Remove and return the highest-priority (lowest key) item.
-        """
+        """Remove and return the highest-priority (lowest key) live item."""
         while self._heap:
             _, _, item = heapq.heappop(self._heap)
-
-            item_id = self._get_id(item)
+            if not self._is_live(item):
+                continue
+            item_id = self._id(item)
             if item_id is not None:
-                # valido solo se è ancora l'oggetto corrente
-                if self._index.get(item_id) is not item:
-                    continue
                 self._index.pop(item_id, None)
-                
             self.active_size -= 1
             return item
-
         raise IndexError("pop from an empty priority queue")
-    
+
+    def remove(self, id: int) -> None:
+        """
+        Remove item by id in O(1) via lazy deletion.
+
+        The heap entry remains physically until the next pop/compact; it will
+        be silently skipped. Raises KeyError if id is not found.
+        """
+        if self._id_attr is None:
+            raise ValueError("remove() requires id_attr to be set")
+        if id not in self._index:
+            raise KeyError(f"No item with id={id}")
+        self._index.pop(id)
+        self.active_size -= 1
+
+    def pop_many(self, n: int) -> list[T]:
+        """Remove and return up to *n* items in priority order."""
+        return [self.pop() for _ in range(min(n, self.active_size))]
+
+    #  Lookup 
 
     def peek(self) -> T:
-        """
-        Return the highest-priority item without removing it.
-        """
+        """Return the highest-priority live item without removing it."""
         while self._heap:
             _, _, item = self._heap[0]
-            item_id = self._get_id(item)
-
-            if item_id is not None and self._index.get(item_id) is not item:
-                heapq.heappop(self._heap)
-                continue
-
-            return item
-
+            if self._is_live(item):
+                return item
+            heapq.heappop(self._heap)
         raise IndexError("peek at an empty priority queue")
-    
 
     def get(self, id: int) -> T | None:
         """
-        Return the item with the given id without removing it.
+        Return item by id without removing it.
 
-        O(1) if id_attr was specified at construction, O(n) fallback otherwise.
+        O(1) if id_attr is set (index lookup), O(n) linear scan otherwise.
         """
         if self._id_attr is not None:
             return self._index.get(id)
-
-        # O(n) fallback — no id_attr specified
         for _, _, item in self._heap:
             if getattr(item, self._id_attr or "", None) == id:
                 return item
         return None
 
-    def pop_many(self, n: int) -> list[T]:
+    #  Maintenance 
+
+    def compact(self) -> None:
         """
-        Remove and return up to *n* items in priority order.
+        Physically purge stale heap entries.
+
+        O(m log m) where m is the current heap size. Called automatically by
+        ``update`` when heap size exceeds ``_BLOAT_FACTOR * active_size``.
         """
-        return [self.pop() for _ in range(min(n, len(self)))]
-    
+        self._heap = [
+            entry for entry in self._heap
+            if self._is_live(entry[2])
+        ]
+        heapq.heapify(self._heap)
 
-
-
-    
-    # Utilities 
+    #  Utilities 
 
     def is_empty(self) -> bool:
-        """Return True if the queue contains no valid items."""
-        # rimuove eventuali stale in cima
+        """True if no live items remain."""
         while self._heap:
-            _, _, item = self._heap[0]
-            item_id = self._get_id(item)
-            if item_id is not None and self._index.get(item_id) is not item:
-                heapq.heappop(self._heap)
-                continue
-            return False
+            if self._is_live(self._heap[0][2]):
+                return False
+            heapq.heappop(self._heap)
         return True
 
     def __len__(self) -> int:
-        """Return the number of items currently in the queue."""
         return self.active_size
 
     def __iter__(self):
-        """Iterate over items in priority order without modifying the queue."""
+        """Yield live items in priority order without modifying the queue."""
         for _, _, item in sorted(self._heap):
-            yield item
+            if self._is_live(item):
+                yield item
 
     def __str__(self) -> str:
         if self.is_empty():
             return "PriorityQueue(empty)"
-        lines = "\n".join(f"  {item}" for item in self)
-        return f"PriorityQueue(\n{lines}\n)"
+        return "PriorityQueue(\n" + "\n".join(f"  {i}" for i in self) + "\n)"
 
     def __repr__(self) -> str:
-        return f"PriorityQueue([{', '.join(str(item) for item in self)}])"
+        return f"PriorityQueue([{', '.join(str(i) for i in self)}])"

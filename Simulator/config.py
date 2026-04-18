@@ -11,7 +11,7 @@ NUM_WORKSTATIONS = 2
 GRID_ROWS = 16       # number of rows for the pod grid
 GRID_COLS = 21       # number of columns for the pod grid
 
-ROBOT_SPEED = 30.0       # cells per minute (1 m/s)
+ROBOT_SPEED = 0.34       # cells per seconds (circa 1 m/s assuming cells are squares 1.5mx1.5m and L1 paths)
 
 
 # Workstations
@@ -23,24 +23,17 @@ WS_WORKLOAD_CAPACITY = 10   # max pods waiting in pod_queue per workstation
 # Parameters for order generation (Barnhart et al. 2024 approach)
 PROB_1_ITEM_ORDER = 0.5
 GEO_DIST_PARAM_ORDER = 0.65      # takes value in {0.25, 0.35, 0.45, 0.65}
-INTERRARIVAL_TIME_ORDER = 1   # equivalent of 175 orders per hour (unit time : minutes)
+INTERRARIVAL_TIME_ORDER = 3600/175       # equivalent of 175 orders per hour (unit time : sec)
 
 
 
 # Simulation control 
-TIME_HORIZON  = 60   # total simulation time in minutes (1 day)
-DELTA_T_OPT   = 15       # optimizer is called every DELTA_T_OPT minutes
+TIME_HORIZON  = 24*60*60       # total simulation time in seconds 
+DELTA_T_OPT = 15*60       # optimizer is called every DELTA_T_OPT seconds
 
 
 # Pikcing time
-POD_PROCESS_TIME = 5/60
-ITEM_PROCESS_TIME = 5/60
+POD_PROCESS_TIME = 5   # in seconds
+ITEM_PROCESS_TIME = 5  # in seconds
 
 
-
-# --- Stochasticity ---
-# Travel time noise: actual_time = nominal_time + noise
-# Distribution to be decided — placeholder values below
-TRAVEL_NOISE_ENABLED = False
-TRAVEL_NOISE_MEAN    = 0.0   # minutes
-TRAVEL_NOISE_STD     = 1.0   # minutes (used if distribution is normal/lognormal)
