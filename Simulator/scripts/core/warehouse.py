@@ -45,6 +45,7 @@ class Warehouse:
         num_skus: int,
         num_robots: int,
         num_workstations: int,
+        num_skus_per_pod: int,
         grid_rows: int,
         grid_cols: int,
         ws_order_capacity: int,
@@ -88,7 +89,7 @@ class Warehouse:
 
         # Generate entities
         self.pods = self._generate_pods(
-            random_generator, num_pods, num_skus, grid_rows, grid_cols
+            random_generator, num_pods, num_skus, grid_rows, grid_cols, num_skus_per_pod
         )
 
         self.workstations = self._generate_workstations(
@@ -105,8 +106,8 @@ class Warehouse:
         self._build_indices()
 
         logging.info(
-            "Warehouse initialized | %d pods, %d workstations, %d robots",
-            len(self.pods), len(self.workstations), len(self.robots)
+            "Warehouse initialized | %d pods  (average number of skus per pod = %3.2f), %d workstations, %d robots",
+            len(self.pods), sum([len(p.items) for p in self.pods])/len(self.pods), len(self.workstations), len(self.robots)
         )
 
     
@@ -118,7 +119,8 @@ class Warehouse:
         num_pods: int,
         num_skus: int,
         grid_rows: int,
-        grid_cols: int
+        grid_cols: int,
+        num_skus_per_pod: int
     ) -> list[Pod]:
         """
         Generate pods.
@@ -131,13 +133,6 @@ class Warehouse:
         # Pre-allocate list
         pods = [None] * num_pods
 
-        # Method 1: Log-normal distribution of SKUs per pod
-        # Average ~20 SKUs per pod, but with right tail (some pods have 50+)
-        skus_per_pod_counts = np.maximum(
-            1,  # At least 1 SKU per pod
-            random_generator.lognormal(mean=2.3, sigma=1.0, size=num_pods).astype(int)
-        )
-
         # Assign SKUs to pods
         for col in range(grid_cols):
             for row in range(grid_rows):
@@ -147,26 +142,15 @@ class Warehouse:
                 x_position = MARGIN + row + 2 * (row // 2)
                 y_position = self.Y - MARGIN - col
 
-                # Sample SKUs for this pod (without replacement)
-                num_skus_for_pod = min(skus_per_pod_counts[pod_id], num_skus)
-                try:
-                    pod_skus = set(
-                        random_generator.choice(
-                            num_skus,
-                            size=num_skus_for_pod,
-                            replace=False
-                        )
-                    )
-                except ValueError:
-                    # If num_skus_for_pod > num_skus, sample with replacement
-                    pod_skus = set(
-                        random_generator.integers(0, num_skus, size=num_skus_for_pod)
-                    )
+                # Sample SKUs for this pod 
+                samples = random_generator.normal(loc=num_skus/2, scale=num_skus/6, size=num_skus_per_pod)
+                samples = np.round(samples).astype(int)
+                pod_skus = samples[(samples >= 0) & (samples <= num_skus-1)]
 
                 pods[pod_id] = Pod(
                     pod_id=pod_id,
                     storage_location=(x_position, y_position),
-                    items=pod_skus,
+                    items=set(pod_skus),
                     status=PodStatus.IDLE
                 )
 
@@ -177,8 +161,13 @@ class Warehouse:
 
         missing_skus = set(range(num_skus)) - all_skus
         for sku_id in missing_skus:
-            random_pod_id = random_generator.integers(0, num_pods)
-            pods[random_pod_id].items.add(sku_id)
+            pod = min(pods, key= lambda p: len(p.items))
+            pods[pod.pod_id].items.add(sku_id)
+
+        all_skus = set()
+        for pod in pods:
+            all_skus.update(pod.items)
+        assert len(all_skus) == num_skus, f"Only {len(all_skus)} skus have been assigned to at least one pod."
 
         return pods
 
@@ -419,8 +408,8 @@ class Warehouse:
     def __repr__(self) -> str:
         return (
             f"Warehouse("
-            f"grid={self.grid_rows}×{self.grid_cols}, "
-            f"physical={self.X}×{self.Y}, "
+            f"grid={self.grid_rows}x{self.grid_cols}, "
+            f"physical={self.X}x{self.Y}, "
             f"pods={len(self.pods)}, "
             f"ws={len(self.workstations)}, "
             f"robots={len(self.robots)})"

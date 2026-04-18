@@ -7,6 +7,7 @@ NUM_PODS         = 336
 NUM_SKUS         = 1000
 NUM_ROBOTS       = 15
 NUM_WORKSTATIONS = 2
+NUM_SKUS_PER_POD = 20
 
 GRID_ROWS = 16       # number of rows for the pod grid
 GRID_COLS = 21       # number of columns for the pod grid

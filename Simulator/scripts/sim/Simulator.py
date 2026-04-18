@@ -96,7 +96,10 @@ class Simulator:
 
         logging.info("\n")
         logging.info("=============================================")
-        logging.info("  START SIMULATION ... ")
+        min, sec = divmod(time_horizon, 60)
+        hours, min = divmod(min, 60)
+        logging.info("  START SIMULATION ... {TIME HORIZON  = %02d:%02d:%02d} ", 
+                     hours, min, sec)
         
 
         dispatch = self._build_dispatch()
@@ -124,7 +127,8 @@ class Simulator:
 
             self._process_event(event_to_process, dispatch)
 
-        
+        logging.info("\n")
+        logging.info("  END SIMULATION.")        
 
         logging.info("\n")
         logging.info("writing Statistics Report ... ")
@@ -133,9 +137,6 @@ class Simulator:
         logging.info("Statistic Manager Resetted")
         self.STAT_MANAGER.reset_statistics()
 
-
-        logging.info("\n")
-        logging.info("  END SIMULATION.")
 
 
     def _process_event(self, event: Event, dispatch: dict) -> None:

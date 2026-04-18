@@ -37,6 +37,7 @@ def main():
         num_skus                        = config.NUM_SKUS,
         num_robots                      = config.NUM_ROBOTS,
         num_workstations                = config.NUM_WORKSTATIONS,
+        num_skus_per_pod                = config.NUM_SKUS_PER_POD,       
         grid_rows                       = config.GRID_ROWS,
         grid_cols                       = config.GRID_COLS,
         ws_order_capacity               = config.WS_ORDER_CAPACITY,
