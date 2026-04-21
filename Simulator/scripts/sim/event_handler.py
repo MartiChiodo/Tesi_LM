@@ -12,6 +12,7 @@ from Simulator.scripts.core.warehouse import Warehouse
 from Simulator.scripts.core.enums import OrderStatus, RobotStatus, PodStatus, WorkstationPickingStatus, EventType
 from Simulator.scripts.opt.policies import assign_order_to_workstation_policy, design_tasks_for_ws, get_nearest_idle_robot
 from Simulator.scripts.sim.utils import sample_sku
+from Simulator.scripts.opt.exact_optimization import *
 
 
 def arrival_order(event: Event, sim) -> None:
@@ -254,8 +255,8 @@ def start_task(event: Event, sim) -> None:
     first_visit = task.stops[0]
     first_workstation = sim.warehouse_status.get_workstation(first_visit.workstation_id)
     travel_time = sim.warehouse_status.travel_time(
-        pod.storage_location,
-        first_workstation.position,
+        sim.warehouse_status.cell2coord(pod.storage_location),
+        sim.warehouse_status.cell2coord(first_workstation.position),
         sim.RANDOM_GENERATOR
     )
     sim.future_events.push(Event(
@@ -389,7 +390,9 @@ def end_picking(event: Event, sim) -> None:
     if len(task.stops) == 0:
         pod = sim.warehouse_status.get_pod(task.pod_id)
         return_travel_time = sim.warehouse_status.travel_time(
-            workstation.position, pod.storage_location, sim.RANDOM_GENERATOR
+            sim.warehouse_status.cell2coord(workstation.position),
+            sim.warehouse_status.cell2coord(pod.storage_location), 
+            sim.RANDOM_GENERATOR
         )
         sim.future_events.push(Event(
             time=sim.current_time + return_travel_time,
@@ -402,7 +405,9 @@ def end_picking(event: Event, sim) -> None:
         next_visit = task.stops[0]
         next_workstation = sim.warehouse_status.get_workstation(next_visit.workstation_id)
         travel_time = sim.warehouse_status.travel_time(
-            workstation.position, next_workstation.position, sim.RANDOM_GENERATOR
+            sim.warehouse_status.cell2coord(workstation.position), 
+            sim.warehouse_status.cell2coord(next_workstation.position), 
+            sim.RANDOM_GENERATOR
         )
         sim.future_events.push(Event(
             time=sim.current_time + travel_time,
@@ -539,7 +544,10 @@ def close_order(event: Event, sim) -> None:
 
 def run_optimizer(event: Event, sim) -> None:
     """Execute the optimization routine (placeholder)."""
-    pass
+    
+    # Solving the optimization model
+    # This function will NOT CHANGE THE STATE of any entities but has access to it
+    solve_exact_opt_model(sim)
 
 
 

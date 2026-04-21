@@ -194,7 +194,7 @@ Represents a storage pod. When idle, the pod is at its \texttt{storage\_location
 \textbf{Field} & \textbf{Type} & \textbf{Description} \\
 \midrule
 \texttt{pod\_id}           & \texttt{int}            & Unique identifier \\
-\texttt{storage\_location} & \texttt{tuple[int,int]} & Storage cell in the grid \\
+\texttt{storage\_location} & \texttt{int}            & Identinfier of the storage cell \\
 \texttt{items}             & \texttt{list[int]}      & SKUs contained in the pod \\
 \texttt{status}            & \texttt{PodStatus}      & \texttt{IDLE} or \texttt{BUSY} \\
 \bottomrule
@@ -210,7 +210,7 @@ Each robot is always in one of two states: \texttt{IDLE} (available) or \texttt{
 \textbf{Field} & \textbf{Type} & \textbf{Description} \\
 \midrule
 \texttt{robot\_id}         & \texttt{int}            & Unique identifier \\
-\texttt{position}          & \texttt{tuple[int,int]} & Current position in the grid (the information is known only when the robot is not moving)\\
+\texttt{position}          & \texttt{id}             & Current position in the grid in terms of cell id (the information is known only when the robot is not moving)\\
 \texttt{status}            & \texttt{RobotStatus}    & \texttt{IDLE} or \texttt{BUSY} \\
 \bottomrule
 \end{tabularx}
@@ -227,7 +227,7 @@ The workstation manages two separate buffers: one for pods (\texttt{picking\_buf
 \texttt{workstation\_id}         & \texttt{int}                            & Unique identifier \\
 \texttt{order\_capacity}         & \texttt{int}                            & Maximum simultaneously open orders \\
 \texttt{released\_task\_capacity}& \texttt{int}                      & Maximum released tasks per workstation \\
-\texttt{position}                & \texttt{tuple[int,int]}                 & Grid coordinates \\
+\texttt{position}                & \texttt{int}                      & Cell identifier of the position \\
 \texttt{pod\_process\_time}      & \texttt{float}                          & Pod processing time at a workstation \\
 \texttt{item\_process\_time}     & \texttt{float}                          & Time for a picking operation at a workstation \\
 \texttt{opened\_orders}          & \texttt{set[int]}                       & Orders currently being processed \\
@@ -270,7 +270,7 @@ The travel time between two cells is computed as the sum of two components: a no
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{images/warehouse_layout.png}
-\caption{Example layout created with \texttt{GRID\_ROWS} = 10, \texttt{GRID\_COLS} = 10, \texttt{NUM\_ROBOTS} = 20 and \texttt{NUM\_WORKSTATION} = 9. \\ Black cells are the \texttt{storage\_location} of each pod, red ones belong to workstations, and blue ones are the initial positions of the robots.}
+\caption{Example layout created with \texttt{GRID\_ROWS} = 10, \texttt{GRID\_COLS} = 10, \texttt{NUM\_ROBOTS} = 15 and \texttt{NUM\_WORKSTATION} = 9. \\ Black cells are the \texttt{storage\_location} of each pod, red ones belong to workstations, and blue ones are the initial positions of the robots.}
 \end{figure}
 
 % ─────────────────────────────────────────────────────────────────────────────

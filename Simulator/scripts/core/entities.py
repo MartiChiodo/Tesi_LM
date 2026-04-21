@@ -87,11 +87,11 @@ class Robot:
     Parameters
     ----------
     robot_id : int               Unique identifier of the robot.
-    position : tuple[int, int]   Current grid position (x, y) of the robot.
+    position : int               Identifier of the cell of the Current grid position of the robot.
     status : RobotStatus         Current operational status of the robot.
     """
     robot_id: int
-    position: tuple[int, int]
+    position: int
     status: RobotStatus = RobotStatus.IDLE
 
 
@@ -103,12 +103,12 @@ class Pod:
     Parameters
     ----------
     pod_id : int                          Unique identifier of the pod.
-    storage_location : tuple[int, int]    Default grid cell where the pod rests when idle.
+    storage_location : int                Default grid cell where the pod rests when idle.
     items : set[int]                      SKU IDs currently stored in the pod.
     status : PodStatus                    Current operational status of the pod.
     """
     pod_id: int
-    storage_location: tuple[int, int]
+    storage_location: int
     items: set[int] = field(default_factory=set)
     status: PodStatus = PodStatus.IDLE
 
@@ -125,7 +125,7 @@ class Workstation:
     Attributes
     ----------
     workstation_id : int            Unique identifier of the workstation.
-    position : tuple[int, int]      Grid position (x, y) of the workstation on the warehouse perimeter.
+    position : int                  Cell id of the workstation on the warehouse perimeter.
 
     order_capacity : int            Maximum number of simultaneously open (OPEN status) orders.
     opened_orders : set[int]        Order IDs currently in OPEN status.
@@ -158,7 +158,7 @@ class Workstation:
     workstation_id: int
     order_capacity: int
     released_task_capacity: int
-    position: tuple[int, int]
+    position: int
     pod_process_time: float
     item_process_time: float
 

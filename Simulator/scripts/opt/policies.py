@@ -64,25 +64,27 @@ def design_tasks_for_ws(
     """
     
     # Collect all uncovered SKUs across open orders at target workstation
-    uncovered_skus = set()
-    for order_id in workstation.opened_orders:
-        order = orders_in_system.get(order_id)
-        if order is not None:
-            uncovered_skus.update(order.items_pending)
+    uncovered_skus = set(
+        [item
+        for o_id in workstation.opened_orders
+        if orders_in_system.get(o_id) is not None
+        for item in orders_in_system.get(o_id).items_pending])
 
-    for id_t in workstation.active_tasks:
-        t = active_tasks[id_t]
-        for v in t.stops:
-            if v.workstation_id == workstation.workstation_id:
-                uncovered_skus -= v.items
-    
+    uncovered_skus -= set([
+        item
+        for id_t in workstation.active_tasks
+        for v in active_tasks[id_t].stops
+        for item in v.items]
+    )
+
     if not uncovered_skus:
         return [], task_counter
     
     # Track which pods are already selected in active tasks
-    already_selected = set()
-    for visit in workstation.active_tasks:
-        already_selected.add(visit.pod_id if hasattr(visit, 'pod_id') else id(visit))
+    already_selected = set([
+        visit.pod_id if hasattr(visit, 'pod_id') else id(visit)
+        for visit in workstation.active_tasks]
+    )
     
     tasks = []
     num_capacity = workstation.released_task_capacity - len(workstation.active_tasks)
@@ -107,8 +109,8 @@ def design_tasks_for_ws(
             
             # Compute distance as tiebreaker
             distance = warehouse.manhattan_distance(
-                pod.storage_location,
-                workstation.position
+                warehouse.cell2coord(pod.storage_location),
+                warehouse.cell2coord(workstation.position)
             )
             
             # Update best pod if this one is better
@@ -190,8 +192,8 @@ def get_nearest_idle_robot(pod, warehouse) -> int | None:
             continue
         
         distance = warehouse.manhattan_distance(
-            robot.position,
-            pod.storage_location
+            warehouse.cell2coord(robot.position),
+            warehouse.cell2coord(pod.storage_location)
         )
         
         # Update if this robot is closer (or tie-break by ID)

@@ -50,7 +50,7 @@ def main():
     logging.info(f"Warehouse initialized: {warehouse}")
 
     # Visualization
-    # warehouse.plot(save=True)
+    warehouse.plot(save=True)
 
     # --- TODO ---
     # SKU distribution among pods

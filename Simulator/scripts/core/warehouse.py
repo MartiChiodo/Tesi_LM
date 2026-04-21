@@ -5,6 +5,7 @@ import os
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
+import math
 
 from Simulator.scripts.core.enums import PodStatus, WorkstationPickingStatus, RobotStatus
 from Simulator.scripts.core.entities import Pod, Workstation, Robot
@@ -149,7 +150,7 @@ class Warehouse:
 
                 pods[pod_id] = Pod(
                     pod_id=pod_id,
-                    storage_location=(x_position, y_position),
+                    storage_location=self.coord2cell(x_position, y_position),
                     items=set(pod_skus),
                     status=PodStatus.IDLE
                 )
@@ -185,16 +186,6 @@ class Warehouse:
 
         workstations = [None] * num_workstations
 
-        def create_workstation(ws_id: int, x: int, y: int) -> Workstation:
-            return Workstation(
-                workstation_id=ws_id,
-                order_capacity=ws_order_capacity,
-                released_task_capacity=ws_released_task_capacity,
-                position=(x, y),
-                pod_process_time=pod_process_time,
-                item_process_time=item_process_time
-            )
-
         # Check if symmetric bottom placement is possible
         max_bottom_slots = (self.X - 2) // MIN_SPACING + 1
 
@@ -205,7 +196,14 @@ class Warehouse:
 
             for ws_id in range(num_workstations):
                 x_position = center_x + start_offset + ws_id * MIN_SPACING
-                workstations[ws_id] = create_workstation(ws_id, x_position, 0)
+                workstations[ws_id] = Workstation(
+                    workstation_id=ws_id,
+                    order_capacity=ws_order_capacity,
+                    released_task_capacity=ws_released_task_capacity,
+                    position= self.coord2cell(x_position, 0),
+                    pod_process_time=pod_process_time,
+                    item_process_time=item_process_time
+                )
 
             return workstations
 
@@ -213,7 +211,14 @@ class Warehouse:
         x_position, y_position = self.X // 2, 0
 
         for ws_id in range(num_workstations):
-            workstations[ws_id] = create_workstation(ws_id, x_position, y_position)
+            workstations[ws_id] = Workstation(
+                workstation_id=ws_id,
+                order_capacity=ws_order_capacity,
+                released_task_capacity=ws_released_task_capacity,
+                position= self.coord2cell(x_position, y_position),
+                pod_process_time=pod_process_time,
+                item_process_time=item_process_time
+            )
 
             # Advance anti-clockwise
             if y_position == 0:
@@ -254,7 +259,7 @@ class Warehouse:
 
             robots[robot_id] = Robot(
                 robot_id=robot_id,
-                position=(x_position, y_position),
+                position=self.coord2cell(x_position, y_position),
                 status=RobotStatus.IDLE
             )
 
@@ -286,18 +291,24 @@ class Warehouse:
 
     ### DISTANCE AND TRAVEL TIME
 
+    def coord2cell(self, position_x: int, position_y: int) -> int:
+        return position_x + self.X * position_y
+    
+    def cell2coord(self, cell_id: int) -> int:
+        return (cell_id % self.X, math.floor(cell_id/self.X))
+
     @staticmethod
     def manhattan_distance(
-        position_a: tuple[int, int],
-        position_b: tuple[int, int],
+        position_a: int,
+        position_b: int,
     ) -> int:
         """Compute Manhattan distance between two positions."""
         return abs(position_a[0] - position_b[0]) + abs(position_a[1] - position_b[1])
 
     def travel_time(
         self,
-        position_a: tuple[int, int],
-        position_b: tuple[int, int],
+        position_a: int,
+        position_b: int,
         random_generator: Generator | None = None,
     ) -> float:
         """
@@ -367,20 +378,20 @@ class Warehouse:
         ax.set_aspect('equal')
 
         for pod in self.pods:
-            x, y = pod.storage_location
+            x, y = self.cell2coord(pod.storage_location)
             ax.add_patch(plt.Rectangle((x - 0.4, y - 0.4), 0.8, 0.8,
                                        fill=False, color='black', linewidth=0.5))
             ax.text(x, y, str(pod.pod_id), ha='center', va='center',
                    fontsize=6, color='black')
 
         for workstation in self.workstations:
-            x, y = workstation.position
+            x, y = self.cell2coord(workstation.position)
             ax.add_patch(plt.Circle((x, y), 0.5, fill=False, color='red', linewidth=1))
             ax.text(x, y, str(workstation.workstation_id), ha='center', va='center',
                    fontsize=8, color='red', fontweight='bold')
 
         for robot in self.robots:
-            x, y = robot.position
+            x, y = self.cell2coord(robot.position)
             ax.add_patch(plt.Rectangle((x - 0.25, y - 0.25), 0.5, 0.5,
                                        fill=False, color='blue', linewidth=0.5))
             ax.text(x, y, str(robot.robot_id), ha='center', va='center',
