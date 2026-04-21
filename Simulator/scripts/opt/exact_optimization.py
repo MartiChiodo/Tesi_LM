@@ -12,7 +12,7 @@ def solve_exact_opt_model(sim):
     n_skus = sim.warehouse_status.num_skus
     n_pods = len(sim.warehouse_statuts.pods)
     set_of_pods = sim.warehouse_statuts.pods.deepcopy()
-    set_of_pods_by_sku = [sim.warehouse_statuts.get_pods_containing_sku(sku_id = i).deepcopy() for i in range(n_skus)]
+    pod_indices_by_sku = { i : sim.warehouse_statuts.get_pods_containing_sku(sku_id = i).pod_id for i in range(n_skus)}
     n_workstation = len(sim.warehouse_status.workstations)
     set_of_workstations = sim.warehouse_status.workstations.deepcopy()
 
@@ -22,7 +22,7 @@ def solve_exact_opt_model(sim):
     nodes = list(product(L+W, range(N_TIME)))
 
     travelling_arcs = [
-            ((l1, t1), (l2, t2))
+            [(l1, t1), (l2, t2)]
             for (l1, t1) in nodes
             for l2 in (L + W)
             for t2 in range(t1 + 1, N_TIME)
@@ -40,10 +40,10 @@ def solve_exact_opt_model(sim):
         if t1 + 1 < N_TIME
     ]
 
-    ongoing_arc_per_node = {}
+    incoming_arc_per_node = {}
     outgoing_arc_per_node = {}
     for src, dst in travelling_arcs + idle_arcs:
-        ongoing_arc_per_node[dst].append(src)
+        incoming_arc_per_node[dst].append(src)
         outgoing_arc_per_node[src].append(dst)
 
 
@@ -81,21 +81,105 @@ def solve_exact_opt_model(sim):
                         set_of_orders_at_ws.append(o)
                         set_of_orders_at_ws_items.append(list[o.items_pending - v.items])
 
+    orders = set_of_backlog_orders + set_of_orders_at_ws
+    orders_item = set_of_order_items + set_of_orders_at_ws_items
+    n_orders = len(set_of_orders_at_ws + set_of_backlog_orders)
         
 
     # When I run the optimization I build a model considering the active tasks as already performed
     model = gb.Model("TaskDesign")
-    model.addVars(n_skus, len(set_of_orders_at_ws + set_of_backlog_orders), n_pods, n_workstation, N_TIME,
+    x = model.addVars(n_skus, n_orders, n_pods, n_workstation, N_TIME,
                    vtype=gb.BINARY, name="x")
-    model.addVars(len(set_of_orders_at_ws + set_of_backlog_orders), n_workstation,
+    z = model.addVars(n_orders, n_workstation,
                   vtype=gb.BINARY, name="z")
-    model.addVars(n_pods, len(travelling_arcs + idle_arcs),
+    y = model.addVars(n_pods, len(travelling_arcs + idle_arcs),
                   vtype=gb.BINARY, name="y")
-    model.addVars(len(set_of_orders_at_ws + set_of_backlog_orders), n_workstation, N_TIME,
+    v = model.addVars(n_orders, n_workstation, N_TIME,
                   vtype=gb.BINARY, name="v")
-    model.addVars(len(set_of_orders_at_ws + set_of_backlog_orders), n_workstation, N_TIME,
+    f = model.addVars(n_orders, n_workstation, N_TIME,
                   vtype=gb.BINARY, name="f")
-    model.addVars(len(set_of_orders_at_ws + set_of_backlog_orders), n_workstation, N_TIME,
+    g = model.addVars(n_orders, n_workstation, N_TIME,
                   vtype=gb.BINARY, name="g")
+    
+
+    # Costraints
+    CAP_WS = sim.warehouse_status.workstations[0].order_capacity
+    DELTA_ITEM = sim.warehouse_status.workstations[0].item_process_time
+    DELTA_POD = sim.warehouse_status.workstations[0].pod_process_time
+
+    # Workstation Constraints
+    model.addConstrs(
+            (gb.quicksum(z[m, w] for w in range(n_workstation)) <= 1 for m in range(n_orders)),
+            name="assign o-ws"
+        )
+    model.addConstrs(
+            (gb.quicksum(v[m, w, t] for m in range(n_orders)) <= CAP_WS 
+                for w in range(n_workstation) for t in range(N_TIME)),
+            name="ws_capacity"
+        )
+    model.addConstrs(
+           (
+            gb.quicksum(
+                DELTA_ITEM * (x[i, m, p, w, t] - x[i, m, p, w, t-1])
+                for m in range(n_orders)
+                for i in orders_item[m]
+                for p in pod_indices_by_sku[i]
+            )
+            + gb.quicksum(
+                DELTA_POD * y[p, a]
+                for p in range(n_pods)
+                for a in outgoing_arc_per_node[(w, t)]
+            )
+            <= TIME_UNIT for w in range(n_workstation) for t in range(1, N_TIME)
+        ),
+            name="workload_restriction"
+        )
+    
+
+    # Pod Operations and Congestion
+    model.addConstrs(
+        (gb.quicksum(y[ip,a] for a in outgoing_arc_per_node[(p.storage_location, 0)]) == 1 for ip, p in enumerate(set_of_pods)),
+        name = "storage_loc"
+    )
+    model.addConstrs(
+            (
+            gb.quicksum(y[ip, a] for a in incoming_arc_per_node[node]) 
+            - gb.quicksum(y[ip, a] for a in outgoing_arc_per_node[node]) 
+            == 0
+            for ip, p in enumerate(set_of_pods)
+            for node in nodes
+            if node[1] != N_TIME - 1
+            and not (node[1] == 0 and node[0] == p.storage_location)
+        ),
+        name = "flow_conservation"
+    )
+    
+    # TODO: CONGESTION CONSTR
+
+    # Consistency Constraints
+    model.addConstrs(
+            (
+                x[i, m, p, w, t] - x[i, m, p, w, t-1]
+                <= gb.quicksum(y[p, a] for a in travelling_arcs + outgoing_arc_per_node[(w,t)])
+                for m in range(n_orders) 
+                for i in orders_item[m]
+                for p in pod_indices_by_sku[i]
+                for w in range(n_workstation)
+                for t in range(1, N_TIME)
+            ),
+            name = "link_assign_flow"
+        )
+    model.addConstrs(
+            (
+            gb.quicksum(x[i, m, p, w, t] - x[i, m, p, w, t-1] for p in pod_indices_by_sku[i]) <= z[m, w]
+            for m in range(n_orders) 
+            for i in orders_item[m]
+            for w in range(n_workstation)
+            for t in range(1, N_TIME)
+        ),
+        name = "order_all_delivered_at_wst"
+    )
+
+    ## TODO : implementare vincoli 11 - 14
 
     return 
