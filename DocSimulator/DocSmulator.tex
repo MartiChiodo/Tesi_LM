@@ -277,44 +277,94 @@ The travel time between two cells is computed as the sum of two components: a no
 \newpage \clearpage
 \section{Simulator Engine}
 
-The \texttt{Simulator} is the container for the entire simulation state and drives the event loop. The following table describes its main attributes.
+The simulation engine is split across three Python objects to cleanly separate immutable configuration from mutable per-run state.
 
-\subsection{\texttt{Simulator} class}
+% ── SimulatorConfig ──────────────────────────────────────────────────────────
+\subsection{\texttt{SimulatorConfig} — immutable parameters}
+
+A \texttt{frozen} dataclass that holds every parameter that does not change across replicas. It is constructed once and shared by all \texttt{run()} calls on the same \texttt{Simulator} instance.
+
 \vspace{0.4em}
 \begin{tabularx}{\textwidth}{l l X}
 \toprule
 \textbf{Attribute} & \textbf{Type} & \textbf{Description} \\
 \midrule
-\texttt{RANDOM\_GENERATOR}      & \texttt{numpy.Generator}        & Random generator for reproducibility \\
-\texttt{STAT\_MANAGER}          & \texttt{StatManager}            & An istance of the \texttt{StatManager} class to collect KPIs \\
-\texttt{order\_gen\_config}     & \texttt{list[float]}            & List in the form \texttt{[interarrival\_time, prob\_1\_item, geo\_param]}, specifying parameters to simulate order arrivals \\
-\texttt{optimization\_enabled}  & \texttt{bool}                   & \texttt{False} $\to$ greedy policies; \texttt{True} $\to$ optimiser \\
-\texttt{warehouse\_status}      & \texttt{Warehouse}              & Physical environment and state of all entities \\
-\texttt{current\_time}          & \texttt{float}                  & Current simulation time (in seconds) \\
-\texttt{future\_events}         & \texttt{PriorityQueue[Event]}   & Future events ordered by occurrence timestamp \\
-\texttt{orders\_in\_system}     & \texttt{PriorityQueue[Order]}   & Received orders ordered by arrival time; \texttt{BACKLOG} orders have priority \\
-\texttt{task\_counter}          & \texttt{int}                    & Incremental counter for task IDs \\
-\texttt{order\_counter}         & \texttt{int}                    & Incremental counter for order IDs \\
-\texttt{released\_tasks}        & \texttt{PriorityQueue[Task]}    & Tasks ready for assignment to a robot \\
-\texttt{active\_tasks}          & \texttt{dict[int, Task]}        & Released tasks identified by their ID \\
-\texttt{scheduled\_tasks}       & \texttt{dict[int, PriorityQueue[Task]]} & Tasks scheduled per workstation by the optimiser (used only if \texttt{optimization\_enabled} is \texttt{True})\\
+\texttt{order\_gen\_config}    & \texttt{list[float]}  & \texttt{[interarrival\_time, prob\_1\_item, geo\_param]} — parameters for order arrival generation \\
+\texttt{warm\_up}              & \texttt{float}        & Seconds discarded from statistics at run start. Default \texttt{0}. \\
+\texttt{optimization\_enabled} & \texttt{bool}         & \texttt{False} $\to$ greedy policies; \texttt{True} $\to$ optimiser \\
 \bottomrule
 \end{tabularx}
 
-The main loop follows the classical DES structure and is defined by the \texttt{run\_simulation} method of the \texttt{Simulator} class:
+% ── SimulatorState ───────────────────────────────────────────────────────────
+\subsection{\texttt{SimulatorState} — mutable per-run state}
+
+A plain dataclass holding all quantities that change during a simulation run. A fresh \texttt{SimulatorState} is constructed at the beginning of every \texttt{run()} call, guaranteeing that consecutive calls on the same \texttt{Simulator} object produce fully independent replicas with no shared mutable state.
+
+\vspace{0.4em}
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Attribute} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\texttt{current\_time}      & \texttt{float}                          & Current simulation time (seconds) \\
+\texttt{warehouse}          & \texttt{Warehouse}                      & Physical environment and live state of all entities \\
+\texttt{future\_events}     & \texttt{PriorityQueue[Event]}           & Future events ordered by timestamp; \texttt{RELEASE\_TASK} breaks ties first \\
+\texttt{orders\_in\_system} & \texttt{PriorityQueue[Order]}           & Received orders ordered by arrival time; \texttt{BACKLOG} orders have priority \\
+\texttt{scheduled\_tasks}   & \texttt{dict[int, PriorityQueue[Task]]} & Tasks scheduled per workstation by the optimiser \\
+\texttt{released\_tasks}    & \texttt{PriorityQueue[Task]}            & Tasks ready for robot assignment \\
+\texttt{active\_tasks}      & \texttt{dict[int, Task]}                & Executing tasks, keyed by \texttt{task\_id} \\
+\texttt{orders\_counter}    & \texttt{int}                            & Monotonic counter for order IDs \\
+\texttt{task\_counter}      & \texttt{int}                            & Monotonic counter for task IDs \\
+\texttt{event\_count}       & \texttt{int}                            & Total events processed (for logging) \\
+\texttt{closed\_orders}     & \texttt{int}                            & Completed orders (for logging) \\
+\bottomrule
+\end{tabularx}
+
+% ── Simulator ────────────────────────────────────────────────────────────────
+\subsection{\texttt{Simulator} — orchestrator}
+
+The \texttt{Simulator} class owns the immutable configuration, the random generator and the \texttt{StatManager}. Its constructor accepts a \texttt{warehouse\_factory} — a zero-argument callable that returns a fresh \texttt{Warehouse} — instead of a \texttt{Warehouse} instance directly. This design choice is intentional: calling \texttt{run()} multiple times in the main script produces independent replicas automatically, because each call rebuilds the full \texttt{SimulatorState} (including a new \texttt{Warehouse}) from scratch before processing any event.
+
+\vspace{0.4em}
+\begin{tabularx}{\textwidth}{l l X}
+\toprule
+\textbf{Attribute} & \textbf{Type} & \textbf{Description} \\
+\midrule
+\texttt{RANDOM\_GENERATOR}    & \texttt{numpy.Generator}          & Random generator for reproducibility \\
+\texttt{config}               & \texttt{SimulatorConfig}          & Immutable run parameters \\
+\texttt{state}                & \texttt{SimulatorState}           & Mutable state of the current run (rebuilt on every \texttt{run()} call) \\
+\texttt{STAT\_MANAGER}        & \texttt{StatManager}              & KPI collector (also rebuilt on every \texttt{run()} call) \\
+\texttt{\_warehouse\_factory} & \texttt{Callable[[], Warehouse]}  & Factory invoked once per \texttt{run()} to produce a pristine warehouse \\
+\bottomrule
+\end{tabularx}
+
+\vspace{0.8em}
+The typical usage pattern in \texttt{run\_simulation.py} is therefore:
+
+\begin{lstlisting}[language=Python, basicstyle=\ttfamily\small]
+config = SimulatorConfig(order_gen_config=[...], warm_up=3600)
+sim    = Simulator(rng, config, warehouse_factory=lambda: Warehouse(...))
+
+sim.run(8 * 3600)   # replica 1 -- starts from a clean state
+sim.run(8 * 3600)   # replica 2 -- fully independent, zero extra code
+\end{lstlisting}
+
+\vspace{0.4em}
+The main event loop inside \texttt{run()} follows the classical DES structure:
 \begin{enumerate}[noitemsep]
-    \item Pop the event with the smallest timestamp from \texttt{future\_events}.
-    \item Advance \texttt{current\_time} to the event time.
+    \item Rebuild \texttt{state} and \texttt{STAT\_MANAGER} from a fresh warehouse.
+    \item Push the first \texttt{ARRIVAL\_ORDER} event at $t \approx 0$.
+    \item Pop the event with the smallest timestamp from \texttt{state.future\_events}.
+    \item Advance \texttt{state.current\_time} to the event time.
     \item Dispatch to the corresponding handler via the dispatch table.
     \item Repeat until the queue is empty or \texttt{TIME\_HORIZON} is reached.
+    \item Write and reset statistics via \texttt{STAT\_MANAGER}.
 \end{enumerate}
 
 
 % ─────────────────────────────────────────────────────────────────────────────
 \subsection{Event Handlers}
 
-Each \texttt{EventType} is associated with a handler function with signature \texttt{handler(event, sim)}, which reads and modifies the simulation state via the \texttt{sim} object. The table summarises the current implementation status.  
-Each event receives as input an \texttt{Event} object and a \texttt{Simulator} instance; the former contains an \texttt{Event.info} field used to pass additional information for processing the event.
+Each \texttt{EventType} is associated with a handler function with signature \texttt{handler(event, state, sim)}, where \texttt{state} is the \texttt{SimulatorState} holding all mutable queues and counters, and \texttt{sim} provides access to the immutable configuration (\texttt{sim.config}) and the random generator (\texttt{sim.RANDOM\_GENERATOR}). The table summarises the current implementation status.
 
 \begin{table}[htbp]
 \begin{tabularx}{\textwidth}{p{3cm} p{4cm} X}
@@ -323,7 +373,7 @@ Each event receives as input an \texttt{Event} object and a \texttt{Simulator} i
 \midrule
 \texttt{ARRIVAL\_ORDER}    
 & \texttt{None} 
-& Generates a new order, store it in \texttt{orders\_in\_system} and schedules the next order arrival; without the optimiser, assigns it directly to a workstation. \\
+& Generates a new order, store it in \texttt{state.orders\_in\_system} and schedules the next order arrival; without the optimiser, assigns it directly to a workstation. \\
 
 \texttt{OPEN\_ORDER}       
 & \texttt{Order} 
@@ -339,7 +389,7 @@ Each event receives as input an \texttt{Event} object and a \texttt{Simulator} i
 
 \texttt{START\_TASK}       
 & \texttt{None} 
-& Veerify that among the released tasks there is at least one that can be started (i.e., whose corresponding pod is idle). If so, assign an idle robot (if available) to it and set both the robot and the pod to \texttt{BUSY}. \\
+& Verify that among the released tasks there is at least one that can be started (i.e., whose corresponding pod is idle). If so, assign an idle robot (if available) to it and set both the robot and the pod to \texttt{BUSY}. \\
 
 \texttt{ARRIVAL\_POD\_WST} 
 & \texttt{Task} 
@@ -351,7 +401,7 @@ Each event receives as input an \texttt{Event} object and a \texttt{Simulator} i
 
 \texttt{END\_PICKING}      
 & \texttt{Task} 
-& Completes the picking operation by updating the \texttt{items\_pending} field of the involved orders. If necessary, it triggers \texttt{CLOSE\_ORDER}, and schedules new pod movements or their return to storage based on the remaining stops in the task. Since the number of released tasks for this workstation has been decremented, new tasks can now be created and released..\\
+& Completes the picking operation by updating the \texttt{items\_pending} field of the involved orders. If necessary, it triggers \texttt{CLOSE\_ORDER}, and schedules new pod movements or their return to storage based on the remaining stops in the task. Since the number of released tasks for this workstation has been decremented, new tasks can now be created and released.\\
 
 \texttt{CLOSE\_ORDER}      
 & \texttt{Order} 

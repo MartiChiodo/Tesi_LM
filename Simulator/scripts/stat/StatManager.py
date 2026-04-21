@@ -27,6 +27,7 @@ class StatManager:
     """
 
     def __init__(self, warehouse, warm_up: float = 0.0) -> None:
+        
         self.WARM_UP = warm_up
 
         n_ws = len(warehouse.workstations)

@@ -1,5 +1,27 @@
+"""
+sim.py
+------
+Core discrete-event simulation engine.
+
+Calling ``sim.run()`` multiple times produces independent replicas automatically:
+each call rebuilds the full mutable state from scratch via ``warehouse_factory``.
+
+Architecture
+------------
+SimulatorConfig   Immutable run parameters (frozen dataclass).
+SimulatorState    All mutable simulation state (plain dataclass).
+Simulator         Orchestrator: owns config, RNG and warehouse_factory.
+                  Every ``run()`` call starts from a clean state.
+
+"""
+
+from __future__ import annotations
+
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Callable
+
+import numpy as np
 from numpy.random import Generator
 
 from Simulator.scripts.core.entities import Order, Task, Event
@@ -8,141 +30,229 @@ from Simulator.scripts.core.queues import PriorityQueue
 from Simulator.scripts.sim import event_handler as eh
 from Simulator.scripts.core.enums import OrderStatus, EventType, PodStatus
 from Simulator.scripts.stat.StatManager import StatManager
+from Simulator.scripts.opt.OptManager import OptManager
 
 
+
+# Immutable configuration
+
+@dataclass(frozen=True)
+class SimulatorConfig:
+    """
+    Immutable run-level parameters shared across all replicas.
+
+    order_gen_config    : list[float]   [orders_per_hour, prob_1_item_order, geo_dist_param].
+    warm_up             : float         Seconds discarded from statistics at run start. Default 0.
+    optimization_enabled: bool          Optimisation-based assignment if True. Default False.
+    """
+    order_gen_config:        list[float]
+    warm_up:                 float = 0.0
+    optimization_enabled:    bool  = False
+    optimization_interval :  float = 15*60
+
+
+# Mutable simulation state
+
+@dataclass
+class SimulatorState:
+    """
+    All mutable state for one simulation run.
+
+    Rebuilt from scratch at the start of every ``Simulator.run()`` call so that
+    consecutive runs are fully independent replicas.
+
+    current_time     : float                        Clock of the last processed event (seconds).
+    warehouse        : Warehouse                    Live environment (pods, robots, workstations).
+    future_events    : PriorityQueue[Event]         Min-heap; RELEASE_TASK breaks ties first.
+    orders_in_system : PriorityQueue[Order]         All orders, ordered by status then arrival time.
+    scheduled_tasks  : dict[int, PriorityQueue]     Optimiser output keyed by workstation_id.
+    released_tasks   : PriorityQueue[Task]          Floor-ready tasks.
+    active_tasks     : dict[int, Task]              Executing tasks keyed by task_id.
+    orders_counter   : int                          Monotonic order-ID counter.
+    task_counter     : int                          Monotonic task-ID counter.
+    event_count      : int                          Total events processed (for logging).
+    closed_orders    : int                          Completed orders (for logging).
+    """
+    current_time:     float
+    warehouse:        Warehouse
+    future_events:    PriorityQueue
+    orders_in_system: PriorityQueue
+    scheduled_tasks:  dict[int, PriorityQueue]
+    released_tasks:   PriorityQueue
+    active_tasks:     dict[int, Task]
+    orders_counter:   int = 0
+    task_counter:     int = 0
+    event_count:      int = 0
+    closed_orders:    int = 0
+
+
+def _build_state(warehouse: Warehouse) -> SimulatorState:
+    """Build a clean :class:`SimulatorState` from a fresh *warehouse*."""
+    return SimulatorState(
+        current_time=0.0,
+        warehouse=warehouse,
+        future_events=PriorityQueue(
+            key=lambda e: (e.time, e.type != EventType.RELEASE_TASK)
+        ),
+        orders_in_system=PriorityQueue(
+            key=lambda o: (o.status != OrderStatus.BACKLOG, o.arrival_time),
+            id_attr="order_id",
+        ),
+        scheduled_tasks={
+            ws.workstation_id: PriorityQueue(key=lambda t: t.priority, id_attr="task_id")
+            for ws in warehouse.workstations
+        },
+        released_tasks=PriorityQueue(
+            key=lambda t: (
+                warehouse.pods[t.pod_id].status != PodStatus.IDLE,
+                t.priority,
+            ),
+            id_attr="task_id",
+        ),
+        active_tasks={},
+    )
+
+
+
+# Simulator
 
 class Simulator:
     """
-    Core discrete-event simulation engine managing event scheduling and execution.
+    Discrete-event simulation engine.
 
-    Attributes
+    Call ``run()`` as many times as needed — each call is an independent replica.
+
+    Parameters
     ----------
-    RANDOM_GENERATOR: Generator                             Istance of the numpy.random.Generator module to generate variables
-    STAT_MANAGER: StatManager                               Istance of StatManager to manage the statistics
-    order_gen_config : list[float]                          Contains the parameters for order generation 
-                                                                [orders_per_hour, prob_1_item_order, geo_dist_param_order]
+    random_generator  : Generator               Seeded numpy RNG for all stochastic draws.
+    config            : SimulatorConfig         Immutable run parameters.
+    warehouse_factory : Callable[[], Warehouse] Zero-arg callable returning a fresh Warehouse.
+                                                Invoked once at the start of every ``run()`` call.
 
-    current_time : float                                    Current simulation time.
-    optimization_enabled : bool                             If True, use optimization-based decisions; otherwise use heuristic policies.
-    warehouse_status : Warehouse                            Warehouse environment containing the info about pod, robot and workstation status.
-    future_events : PriorityQueue                           Priority queue of scheduled events.
-
-    orders_in_system : PriorityQueue                        Orders that have entered the system.
-    scheduled_tasks: dict[int, PriorityQueue[Task]]         Tasks generated by optimizer divided by workstation_id.
-    released_tasks : PriorityQueue                          Tasks released, generally released_task_capacity tasks per workstation are active simultaneosly.
-    active_tasks : dict[int, Task]                          To track active tasks (task_id, Task)
     """
 
     def __init__(
         self,
-        random_generator: Generator,
-        order_gen_config: list[float],
-        warehouse: Warehouse,
-        optimization_enabled: bool = False
+        random_generator:  Generator,
+        config:            SimulatorConfig,
+        warehouse_factory: Callable[[], Warehouse],
     ) -> None:
-        
-        self.RANDOM_GENERATOR = random_generator
-        self.STAT_MANAGER = StatManager(warehouse, warm_up=10)
+        self.RANDOM_GENERATOR:  Generator                = random_generator
+        self.config:            SimulatorConfig          = config
+        self._warehouse_factory: Callable[[], Warehouse] = warehouse_factory
 
-        self.order_gen_config = order_gen_config
-        self.optimization_enabled = optimization_enabled
-        self.warehouse_status = warehouse
-
-        self.current_time = 0
-
-        # Future events queue --> priority is determined by when events are scheduled but release 
-        # task events have always the priority to avoid incostincies in tasks released.
-        self.future_events: PriorityQueue[Event] = PriorityQueue(key=lambda e: (e.time, e.type != EventType.RELEASE_TASK))
-        self.orders_counter = 0
-        self.orders_in_system: PriorityQueue[Order] = PriorityQueue(
-                                key=lambda o: (o.status != OrderStatus.BACKLOG, o.arrival_time), 
-                                id_attr='order_id')
-        
-        self.task_counter = 0
-        self.scheduled_tasks: dict[int, PriorityQueue[Task]] = {
-                    ws.workstation_id: PriorityQueue(key=lambda t: t.priority, id_attr='task_id')
-                    for ws in warehouse.workstations
-                }
-        self.released_tasks: PriorityQueue[Task] = PriorityQueue(
-            key=lambda t: (self.warehouse_status.pods[t.pod_id].status != PodStatus.IDLE, t.priority),
-            id_attr='task_id'
-        )
-        self.active_tasks: dict[int, Task] = dict()
-
-        # Contatori per il riepilogo periodico
-        self._event_count = 0
-        self._closed_orders = 0
+        # state and STAT_MANAGER are placeholders; run() overwrites them.
+        self.state:        SimulatorState | None = None
+        self.STAT_MANAGER: StatManager    | None = None
 
 
-    # Dispatch table 
-    def _build_dispatch(self):
-        return {
-            EventType.ARRIVAL_ORDER:  eh.arrival_order,
-            EventType.RUN_OPTIMIZER:  eh.run_optimizer,
-            EventType.RELEASE_TASK:   eh.release_task,
-            EventType.START_TASK:     eh.start_task,
-            EventType.ARRIVAL_POD_WST: eh.arrival_pod_wst,
-            EventType.OPEN_ORDER:     eh.open_order,
-            EventType.START_PICKING:  eh.start_picking,
-            EventType.END_PICKING:    eh.end_picking,
-            EventType.CLOSE_ORDER:    eh.close_order,
-            EventType.RETURN_POD:     eh.return_pod,
-        }
 
-
-    # Run 
     def run(self, time_horizon: float) -> None:
-        """Run the simulation until the given time horizon."""
+        """
+        Execute one independent simulation run up to *time_horizon* seconds.
 
-        logging.info("\n")
-        logging.info("=============================================")
-        min, sec = divmod(time_horizon, 60)
-        hours, min = divmod(min, 60)
-        logging.info("  START SIMULATION ... {TIME HORIZON  = %02d:%02d:%02d} ", 
-                     hours, min, sec)
-        
+        Rebuilds :class:`SimulatorState` and :class:`StatManager` from scratch
+        at the very start, so consecutive calls are fully independent replicas
+        with no shared mutable state.
 
+        Parameters
+        ----------
+        time_horizon : float
+            Simulation end time in seconds (e.g. ``8 * 3600``).
+        """
+        # Reset: build a clean state for this replica 
+        fresh_warehouse   = self._warehouse_factory()
+        self.state        = _build_state(fresh_warehouse)
+
+        assert self.config.warm_up < time_horizon, "Warm-up for KPIs collection exceeds simulation time horizon."
+        self.STAT_MANAGER = StatManager(fresh_warehouse, self.config.warm_up)
+
+        if self.config.optimization_enabled:
+            self.OPT_MANAGER = OptManager(fresh_warehouse)
+
+        # Event loop 
+        _log_banner(time_horizon)
+        state    = self.state
         dispatch = self._build_dispatch()
 
-        e = Event(time=1e-8, type=EventType.ARRIVAL_ORDER)
-        self.future_events.push(item=e)
+        state.future_events.push(Event(time=1e-8, type=EventType.ARRIVAL_ORDER))
+        if self.config.optimization_enabled:
+            state.future_events.push(Event(time=15*60, type=EventType.RUN_OPTIMIZER))
 
-        self.current_time = 0
-        while not self.future_events.is_empty() and self.current_time < time_horizon:
+        while not state.future_events.is_empty() and state.current_time < time_horizon:
+            event              = state.future_events.pop()
+            state.current_time = event.time
+            state.event_count += 1
 
-            event_to_process = self.future_events.pop()
-            self.current_time = event_to_process.time
-            self._event_count += 1
-
-            min, sec = divmod(self.current_time, 60)
-            hours, min = divmod(min, 60)
-            logging.debug("")
             logging.debug(
-                "   EVENT NUM %-4d  current_time = %02d:%02d:%02d   %-20s  [number of future events = %d]",
-                self._event_count,
-                hours, min, sec,
-                event_to_process.type.name,
-                len(self.future_events)
+                "   EVENT NUM %-4d  current_time = %s   %-20s  [queue size = %d]",
+                state.event_count,
+                _fmt_time(state.current_time),
+                event.type.name,
+                len(state.future_events),
             )
 
-            self._process_event(event_to_process, dispatch)
+            self._process_event(event, state, dispatch)
 
-        logging.info("\n")
-        logging.info("  END SIMULATION.")        
-
-        logging.info("\n")
-        logging.info("writing Statistics Report ... ")
+        #  Statistics 
+        logging.info("  END SIMULATION.\n")
+        logging.info("Writing statistics report ...")
         self.STAT_MANAGER.return_statistics()
-
-        logging.info("Statistic Manager Resetted")
         self.STAT_MANAGER.reset_statistics()
 
 
+    # Private helpers
 
-    def _process_event(self, event: Event, dispatch: dict) -> None:
-        """Dispatch event to the corresponding handler."""
+    def _build_dispatch(self) -> dict:
+        """
+        Return the EventType → handler mapping.
+
+        Handlers signature: ``(event, state, sim)``
+        - *state* : :class:`SimulatorState`  — mutable queues and counters.
+        - *sim*   : :class:`Simulator`       — config and RNG.
+        """
+        return {
+            EventType.ARRIVAL_ORDER:   eh.arrival_order,
+            EventType.RUN_OPTIMIZER:   eh.run_optimizer,
+            EventType.RELEASE_TASK:    eh.release_task,
+            EventType.START_TASK:      eh.start_task,
+            EventType.ARRIVAL_POD_WST: eh.arrival_pod_wst,
+            EventType.OPEN_ORDER:      eh.open_order,
+            EventType.START_PICKING:   eh.start_picking,
+            EventType.END_PICKING:     eh.end_picking,
+            EventType.CLOSE_ORDER:     eh.close_order,
+            EventType.RETURN_POD:      eh.return_pod,
+        }
+
+    def _process_event(
+        self, event: Event, state: SimulatorState, dispatch: dict
+    ) -> None:
+        """
+        Dispatch *event* to its registered handler.
+
+        Raises
+        ------
+        ValueError
+            If *event.type* has no registered handler.
+        """
         handler = dispatch.get(event.type)
         if handler is None:
             raise ValueError(f"Unhandled event type: {event.type}")
-        handler(event, self)
+        handler(event, state, self)
 
+
+# ---------------------------------------------------------------------------
+# Logging utilities
+# ---------------------------------------------------------------------------
+
+def _fmt_time(seconds: float) -> str:
+    """Format *seconds* as ``HH:MM:SS``."""
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    return f"{int(h):02d}:{int(m):02d}:{int(s):02d}"
+
+
+def _log_banner(time_horizon: float) -> None:
+    """Emit an INFO banner with the simulation time horizon."""
+    logging.info("\n=============================================")
+    logging.info("  START SIMULATION  {TIME HORIZON = %s}", _fmt_time(time_horizon))
