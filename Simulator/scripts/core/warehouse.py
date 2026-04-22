@@ -126,7 +126,7 @@ class Warehouse:
         """
         Generate pods.
 
-        Uses log-normal distribution for more realistic SKU distribution:
+        Uses truncated-normal distribution for more realistic SKU distribution:
         - Some SKUs appear in many pods (popular items)
         - Other SKUs appear in few pods (niche items)
         """
@@ -144,7 +144,7 @@ class Warehouse:
                 y_position = self.Y - MARGIN - col
 
                 # Sample SKUs for this pod 
-                samples = random_generator.normal(loc=num_skus/2, scale=num_skus/6, size=num_skus_per_pod)
+                samples = random_generator.normal(loc=num_skus/2, scale=num_skus/3, size=num_skus_per_pod)
                 samples = np.round(samples).astype(int)
                 pod_skus = samples[(samples >= 0) & (samples <= num_skus-1)]
 

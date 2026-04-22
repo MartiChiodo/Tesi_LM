@@ -18,23 +18,24 @@ def main():
     logging.basicConfig(
         filename=os.path.join(os.path.dirname(__file__), "output/logs.log"),
         encoding="utf-8",
-        level=logging.DEBUG,
+        level=logging.INFO,
         datefmt="%H:%M:%S",
         filemode="w",
         format="%(asctime)s %(levelname)s: %(message)s",
     )
+    logging.getLogger('matplotlib').setLevel(logging.WARNING)
+    logging.getLogger("PIL").setLevel(logging.WARNING)
+    logging.getLogger("gurobipy").setLevel(logging.WARNING)
 
     # Seed
     gen = numpy.random.default_rng(12345)
 
-    # Warehouse initialization 
-    logging.info("Initializing warehouse ...")
-
-    warehouse = Warehouse(
+    # Warehouse display 
+    """ warehouse = Warehouse(
         random_generator                = gen,
         num_pods                        = config.NUM_PODS,
         num_skus                        = config.NUM_SKUS,
-        num_robots                      = config.NUM_ROBOTS,
+        num_robots                      = config.NUM_ROBOTS, 
         num_workstations                = config.NUM_WORKSTATIONS,
         num_skus_per_pod                = config.NUM_SKUS_PER_POD,       
         grid_rows                       = config.GRID_ROWS,
@@ -49,7 +50,7 @@ def main():
     logging.info(f"Warehouse initialized: {warehouse}")
 
     # Visualization
-    warehouse.plot(save=True)
+    warehouse.plot(save=True) """
 
     # --- TODO ---
     # SKU distribution among pods

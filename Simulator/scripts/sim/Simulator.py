@@ -65,7 +65,6 @@ class SimulatorState:
     warehouse        : Warehouse                    Live environment (pods, robots, workstations).
     future_events    : PriorityQueue[Event]         Min-heap; RELEASE_TASK breaks ties first.
     orders_in_system : PriorityQueue[Order]         All orders, ordered by status then arrival time.
-    scheduled_tasks  : dict[int, PriorityQueue]     Optimiser output keyed by workstation_id.
     released_tasks   : PriorityQueue[Task]          Floor-ready tasks.
     active_tasks     : dict[int, Task]              Executing tasks keyed by task_id.
     orders_counter   : int                          Monotonic order-ID counter.
@@ -77,7 +76,6 @@ class SimulatorState:
     warehouse:        Warehouse
     future_events:    PriorityQueue
     orders_in_system: PriorityQueue
-    scheduled_tasks:  dict[int, PriorityQueue]
     released_tasks:   PriorityQueue
     active_tasks:     dict[int, Task]
     orders_counter:   int = 0
@@ -98,10 +96,6 @@ def _build_state(warehouse: Warehouse) -> SimulatorState:
             key=lambda o: (o.status != OrderStatus.BACKLOG, o.arrival_time),
             id_attr="order_id",
         ),
-        scheduled_tasks={
-            ws.workstation_id: PriorityQueue(key=lambda t: t.priority, id_attr="task_id")
-            for ws in warehouse.workstations
-        },
         released_tasks=PriorityQueue(
             key=lambda t: (
                 warehouse.pods[t.pod_id].status != PodStatus.IDLE,

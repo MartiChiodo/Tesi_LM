@@ -12,7 +12,7 @@ from Simulator.scripts.core.warehouse import Warehouse
 from Simulator.scripts.core.enums import OrderStatus, RobotStatus, PodStatus, WorkstationPickingStatus, EventType
 from Simulator.scripts.opt.policies import assign_order_to_workstation_policy, design_tasks_for_ws, get_nearest_idle_robot
 from Simulator.scripts.sim.utils import sample_sku
-from Simulator.scripts.opt.exact_optimization import *
+from Simulator.scripts.core.queues import PriorityQueue
 
 
 def arrival_order(event: Event, state, sim) -> None:
@@ -144,14 +144,6 @@ def open_order(event: Event, state, sim) -> None:
         else:
             logging.debug("No tasks designed (all SKUs already covered)")
 
-    else:
-        available_capacity = workstation.released_task_capacity - workstation.counter_released_task
-        for _ in range(available_capacity):
-            state.future_events.push(Event(
-                time=state.current_time,
-                type=EventType.RELEASE_TASK,
-                info=o.workstation_id
-            ))
 
 
 def release_task(event: Event, state, sim) -> None:
@@ -163,11 +155,7 @@ def release_task(event: Event, state, sim) -> None:
     START_TASK if an idle robot is available.
     """
     if sim.config.optimization_enabled:
-        workstation_id = event.info
-        workstation = state.warehouse.get_workstation(workstation_id)
-        if not workstation.can_release_task() or state.scheduled_tasks[workstation_id].is_empty():
-            return
-        task = state.scheduled_tasks[workstation_id].pop()
+        task = event.info
     else:
         task = event.info
 
@@ -209,6 +197,21 @@ def start_task(event: Event, state, sim) -> None:
 
     while not state.released_tasks.is_empty():
         candidate = state.released_tasks.pop()
+        if sim.config.optimization_enabled:
+            # I check if the orders are already opened
+            valid = True
+            for v in candidate.stops:
+                ws = state.warehouse.workstations[v.workstation_id]
+                for o in v.orders:
+                    if o not in ws.opened_orders:
+                        valid = False
+                        break
+                if not valid:
+                    break
+            if not valid:
+                skipped_t.append(candidate)
+                continue
+
         pod = state.warehouse.get_pod(candidate.pod_id)
         if pod.status == PodStatus.IDLE:
             task = candidate
@@ -547,9 +550,59 @@ def run_optimizer(event: Event, state, sim) -> None:
     """Execute the optimization routine."""
 
     # Running the optimizer
-    sim.OPT_MANAGER.solve(state, sim)
+    orders, ordered_orders_by_w, tasks = sim.OPT_MANAGER.solve_task_design_and_assignment(sim, state)
 
-    # Designing tasks from optimizer output
+    # Initializing tasks
+    state.released_tasks = PriorityQueue(
+                key=lambda t: (
+                    state.warehouse.pods[t.pod_id].status != PodStatus.IDLE,
+                    t.priority,
+                ),
+                id_attr="task_id",
+            )
+
+    # orders were extracted from orders_in_system so I have to push them again
+    # Plus ordered_orders_by_w contains idx according to orders not order_id
+    index_to_order_id = {i: o.order_id for i, o in enumerate(orders)}
+    order_id_to_order = {o.order_id: o for o in orders}
+    ordered_orders_by_w_ids = {
+            w: [index_to_order_id[m] for m in ordered_orders_by_w[w]]
+            for w in ordered_orders_by_w
+        }
+    
+    for w, elem in ordered_orders_by_w_ids.items():
+        state.warehouse.workstations[w].order_buffer = []
+        ability_to_open = state.warehouse.workstations[w].order_capacity - len(state.warehouse.workstations[w].opened_orders)
+        for o in elem:
+            if o.STATUS != OrderStatus.OPEN:
+                o.STATUS = OrderStatus.WAITING
+                o.workstation_id = w
+            state.orders_in_system.push(o)
+            state.warehouse.workstations[w].order_buffer.append(o)
+
+            if ability_to_open > 0:
+                state.future_events.push(Event(
+                        time=state.current_time,
+                        type=EventType.OPEN_ORDER,
+                        info=o
+                    ))
+                ability_to_open -= 1
+
+
+    # Releasing new tasks
+    for t in tasks:
+        state.future_events.push(Event(
+                        time=state.current_time + t.priority,
+                        type=EventType.RELEASE_TASK,
+                        info=t
+                    ))
+
+
+
+
+
+
+    
 
 
 # ---------------------------------------------------------------------------
