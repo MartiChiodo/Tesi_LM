@@ -235,7 +235,7 @@ class OptManager:
         """
 
         # From binary variables to tasks and assignments
-        n_orders = len(z1_sol[:,0])
+        n_orders = z1.shape[0]
         
         orders_by_workstation = {w: [] for w in range(self.n_w)}
         order_start_time = {}
