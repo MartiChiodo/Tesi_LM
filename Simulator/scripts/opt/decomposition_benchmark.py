@@ -144,8 +144,8 @@ def solve_by_decomposition(OptManager, sim, state):
             if t > 0:
                 model2.addLConstr(
                     gb.quicksum(OptManager.DELTA_ITEM * (x2[i,m,t] -x2[i,m,t-1]) for m in orders_by_workstation[w] for i in orders_items[m])
-                    + gb.quicksum(OptManager.DELTA_POD * y2[p,a] for p in range(n_p) for a in OptManager.outgoing_arc_idx[(w,t)]),
-                    gb.GRB.LESS_EQUAL, OptManager.TIME_UNIT,
+                    + gb.quicksum(OptManager.DELTA_POD * y2[p,a] for p in range(n_p) for a in OptManager.incoming_arc_idx[(w,t)] if a < len(OptManager.travelling_arcs)),
+                    gb.GRB.LESS_EQUAL, 1000,
                     name = 'EC14'
                 )
 
@@ -166,7 +166,7 @@ def solve_by_decomposition(OptManager, sim, state):
         )
 
         for node in OptManager.nodes:
-            if node[1] != 0 and node[1] != 1:
+            if node[1] != OptManager.N_TIME - 1 and node != (state.warehouse.pods[p].storage_location, 0):
                 model2.addLConstr(
                     gb.quicksum(y2[p,a] for a in OptManager.incoming_arc_idx[node]) 
                     - gb.quicksum(y2[p,a] for a in OptManager.outgoing_arc_idx[node]),
@@ -180,12 +180,16 @@ def solve_by_decomposition(OptManager, sim, state):
         for m in orders_by_workstation[w]:
             for i in orders_items[m]:
                 p = pod_of_item[(i,m)]
+                model2.addLConstr(
+                        (x2[i,m,0]),
+                        gb.GRB.EQUAL, 0,
+                        name= 'EC18'
+                    ) 
                 for t in range(1, OptManager.N_TIME):
                     model2.addLConstr(
                         (x2[i,m,t] - x2[i,m,t-1]),
                         gb.GRB.LESS_EQUAL,
-                        gb.quicksum(y2[p,a] for a in OptManager.outgoing_arc_idx[(w,t)] if a < len(OptManager.travelling_arcs)),
-                        # I have to consider only travelling outgoing arcs, for construction all_arcs = [travelling_arcs | idle_arcs]
+                        gb.quicksum(y2[p,a] for a in OptManager.incoming_arc_idx[(w,t)]),
                         name= 'EC18'
                     )
 
@@ -209,7 +213,7 @@ def solve_by_decomposition(OptManager, sim, state):
     )
 
 
-    logging.info('Model 2 built. Solving ... ')
+    logging.info('Model2 built. Solving ... ')
 
     model2.optimize()
     logging.info("Model2 solved. Status %s   [2: OPTIMAL, 3: INFEASIBLE, 9:TIME LIMIT]",

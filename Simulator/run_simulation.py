@@ -18,7 +18,7 @@ def main():
     logging.basicConfig(
         filename=os.path.join(os.path.dirname(__file__), "output/logs.log"),
         encoding="utf-8",
-        level=logging.INFO,
+        level=logging.DEBUG,
         datefmt="%H:%M:%S",
         filemode="w",
         format="%(asctime)s %(levelname)s: %(message)s",
@@ -62,8 +62,8 @@ def main():
         random_generator = gen,
         config=SimulatorConfig(
             order_gen_config=[config.INTERRARIVAL_TIME_ORDER, config.PROB_1_ITEM_ORDER, config.GEO_DIST_PARAM_ORDER],
-            warm_up = 10,
-            optimization_enabled=True
+            warm_up = 15*60,
+            optimization_enabled=False
         ),
         warehouse_factory = lambda: Warehouse(
             random_generator            = gen,

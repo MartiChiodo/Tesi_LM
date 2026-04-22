@@ -205,6 +205,8 @@ def start_task(event: Event, state, sim) -> None:
                 for o in v.orders:
                     if o not in ws.opened_orders:
                         valid = False
+                        logging.debug("Task %i blocked: order %i for task not opened yet at ws %i.     [released tasks = %i]",
+                            candidate.task_id, o, ws.workstation_id, len(state.released_tasks))
                         break
                 if not valid:
                     break
@@ -268,9 +270,9 @@ def start_task(event: Event, state, sim) -> None:
 
     idle_robots = sum(1 for r in state.warehouse.robots if r.status == RobotStatus.IDLE)
     logging.debug(
-        "Task %i started: robot %i → pod %i → workstation %i (arrival = %.1f s).   [idle robots = %i/%i]",
-        task.task_id, task.robot_id, task.pod_id,
-        first_visit.workstation_id, state.current_time + travel_time,
+        "Task %i started: robot %i → pod %i → workstation %i for orders %s (arrival = %.1f s).   [idle robots = %i/%i]",
+        task.task_id, task.robot_id, task.pod_id, first_visit.workstation_id,
+        first_visit.orders, state.current_time + travel_time,
         idle_robots, len(state.warehouse.robots)
     )
 
@@ -333,8 +335,8 @@ def start_picking(event: Event, state, sim) -> None:
         info=[workstation.workstation_id, WorkstationPickingStatus.BUSY, state.current_time]
     )
 
-    logging.debug("Processing task %i at workstation %i: picking items %s",
-                  task.task_id, visit.workstation_id, visit.items)
+    logging.debug("Processing task %i at workstation %i: picking items %s for orders %s",
+                  task.task_id, visit.workstation_id, visit.items, visit.orders)
 
     picking_time = workstation.estimated_picking_time(len(visit.items))
     state.future_events.push(Event(
@@ -563,39 +565,43 @@ def run_optimizer(event: Event, state, sim) -> None:
 
     # orders were extracted from orders_in_system so I have to push them again
     # Plus ordered_orders_by_w contains idx according to orders not order_id
-    index_to_order_id = {i: o.order_id for i, o in enumerate(orders)}
-    order_id_to_order = {o.order_id: o for o in orders}
-    ordered_orders_by_w_ids = {
-            w: [index_to_order_id[m] for m in ordered_orders_by_w[w]]
-            for w in ordered_orders_by_w
-        }
     
-    for w, elem in ordered_orders_by_w_ids.items():
+    for w, elem in ordered_orders_by_w.items():
         state.warehouse.workstations[w].order_buffer = []
         ability_to_open = state.warehouse.workstations[w].order_capacity - len(state.warehouse.workstations[w].opened_orders)
-        for o in elem:
-            if o.STATUS != OrderStatus.OPEN:
-                o.STATUS = OrderStatus.WAITING
+        for m in elem:
+            o = orders[m] 
+            if o.status != OrderStatus.OPEN:
+                o.status = OrderStatus.WAITING
                 o.workstation_id = w
             state.orders_in_system.push(o)
-            state.warehouse.workstations[w].order_buffer.append(o)
+            state.warehouse.workstations[w].order_buffer.append(o.order_id)
 
-            if ability_to_open > 0:
+            logging.debug("Order %i queued at workstation %i.   [order_queue len = %i]",
+                          o.order_id, w, len(state.warehouse.workstations[w].order_buffer))
+
+            if ability_to_open > 0 and o.status != OrderStatus.OPEN:
                 state.future_events.push(Event(
                         time=state.current_time,
                         type=EventType.OPEN_ORDER,
                         info=o
                     ))
+                state.warehouse.workstations[w].order_buffer.remove(o.order_id)
                 ability_to_open -= 1
 
 
     # Releasing new tasks
+    logging.warning("Task designing ended. Optimizer designed %i tasks.", len(tasks))
     for t in tasks:
         state.future_events.push(Event(
                         time=state.current_time + t.priority,
                         type=EventType.RELEASE_TASK,
                         info=t
                     ))
+        
+    # Scheduling next optimization
+    state.future_events.push(Event(time=state.current_time + sim.config.optimization_interval, 
+                                   type=EventType.RUN_OPTIMIZER))
 
 
 

@@ -12,9 +12,9 @@ from Simulator.scripts.opt.decomposition_benchmark import solve_by_decomposition
 
 # Constants
 
-OBATCH_SIZE = 30
+OBATCH_SIZE = 50
 TIME_UNIT   = 20    # seconds per discrete period (Barnhart)
-N_TIME      = 40    # number of discrete periods  → horizon = 20 × 40 = 13.3 min
+N_TIME      = 60    # number of discrete periods  
 
 
 
@@ -235,109 +235,96 @@ class OptManager:
         """
 
         # From binary variables to tasks and assignments
-        n_orders = z1.shape[0]
+        n_orders = len(orders)
         
-        orders_by_workstation = {w: [] for w in range(self.n_w)}
+        orders_by_workstation = {w: [] for w in range(self.n_workstations)}
         order_start_time = {}
         for m in range(n_orders):
-            for w in range(self.n_w):
+            # workstation assignment
+            for w in range(self.n_workstations):
                 if z1_sol[m, w] > 0.5:
                     orders_by_workstation[w].append(m)
 
+            # start time extraction
+            start_t = None
             for t in range(self.N_TIME):
                 if v2_sol[m, t] > 0.5:
-                    order_start_time[m] = t
+                    start_t = t
                     break
 
+            # fallback if never set
+            order_start_time[m] = start_t if start_t is not None else self.N_TIME
+
         ordered_orders_by_w = {}
-        for w in range(self.n_w):
+        for w in range(self.n_workstations):
             ordered_orders_by_w[w] = sorted(
                 orders_by_workstation[w],
                 key=lambda m: order_start_time[m]
             )
 
 
-        #  Mapping (i,m) -> pod 
-        pod_of_item = {}
-        for i in range(self.n_skus):
-            for m in range(n_orders):
-                for p in range(self.n_p):
-                    if x1_sol[i, m, p] > 0.5:
-                        pod_of_item[(i, m)] = p
+        ### TASK DESIGN 
+        # 1. Lookup maps 
 
-        # Mapping m -> workstation 
-        w_of_order = {}
+        order_to_ws: dict[int, int] = {}
         for m in range(n_orders):
-            for w in range(self.n_w):
+            for w in range(self.n_workstations):
                 if z1_sol[m, w] > 0.5:
-                    w_of_order[m] = w
+                    order_to_ws[m] = w
+                    break
 
-        # Tempo di picking (primo t con x2=1) 
-        pick_time = {}
-        for i in range(self.n_skus):
-            for m in range(n_orders):
-                for t in range(N_TIME):
-                    if x2_sol[i, m, t] > 0.5:
-                        pick_time[(i, m)] = t
+        item_to_pod: dict[tuple[int, int], int] = {}
+        for m in range(n_orders):
+            for i in orders[m].items_pending:
+                for p in range(self.n_pods):
+                    if x1_sol[i, m, p] > 0.5:
+                        item_to_pod[(i, m)] = p
                         break
 
-        # Raggruppamento per pod 
-        # chiave: pod -> (t,w) -> {orders, items}
-        pod_visits = defaultdict(lambda: defaultdict(lambda: {
-            "orders": set(),
-            "items": set()
-        }))
+        item_to_time: dict[tuple[int, int], int] = {}
+        for m in range(n_orders):
+            for i in orders[m].items_pending:
+                if x2_sol[i, m, 0] > 0.5:
+                    item_to_time[(i, m)] = 0
+                    continue
+                for t in range(1, self.N_TIME):
+                    if x2_sol[i, m, t] > 0.5 and x2_sol[i, m, t - 1] < 0.5:
+                        item_to_time[(i, m)] = t
+                        break
 
-        for (i, m), p in pod_of_item.items():
-            if (i, m) not in pick_time:
-                continue  # safety
-
-            t = pick_time[(i, m)]
-            w = w_of_order[m]
-
-            key = (t, w)
-
-            pod_visits[p][key]["orders"].add(m)
-            pod_visits[p][key]["items"].add(i)
-
-        # Costruzione Task 
         tasks = []
         task_id = state.task_counter
 
-        for p, visits_dict in pod_visits.items():
+        picking_operations_by_pod_and_t = {(p, t) : [(i, m) for (i,m), p1 in item_to_pod.items()] for p in range(self.n_pods)}
+        for p in range(self.n_pods):
+            o_set = set()
+            i_set = set()
+            for t in range(self.N_TIME):
+                if (p, t) in picking_operations_by_pod_and_t.keys():
+                    for (i,m) in picking_operations_by_pod_and_t[(p, t)]:
+                        o_set.add(m)
+                        i_set.add(i)
 
-            # ordina temporalmente
-            ordered_keys = sorted(visits_dict.keys())  # (t, w)
+                    if (p, t+1) not in picking_operations_by_pod_and_t.keys():
+                        # Definisco il task 
+                        w_set = set([order_to_ws[m] for m in o_set])
+                        task = Task(task_id = task_id, pod_id = p, robot_id=None, priority = t*self.TIME_UNIT, stops = [])
 
-            stops = []
-            first_time = None
+                        if len(w_set) > 0:
+                            for w in w_set:
+                                o_set_v = set([orders[m].order_id for m in o_set if order_to_ws[m] == w])
+                                i_set_V = set([i for i in i_set if x1_sol[i, m, p] == 1])
 
-            for (t, w) in ordered_keys:
-                data = visits_dict[(t, w)]
+                                task.stops.append(Visit(workstation_id=w, orders=o_set_v, items=i_set_V))
 
-                stops.append(
-                    Visit(
-                        workstation_id=w,
-                        orders=data["orders"],
-                        items=data["items"]
-                    )
-                )
+                        tasks.append(task)
+                        task_id += 1
 
-                if first_time is None:
-                    first_time = t
+                        o_set = set()
+                        i_set = ()
+                                
 
-            task = Task(
-                task_id=task_id,
-                pod_id=p,
-                robot_id=None,
-                stops=stops,
-                priority=(1-first_time)*self.TIME_UNIT if first_time is not None else float("inf")
-            )
-
-            tasks.append(task)
-            task_id += 1
-
-
+        state.task_counter = task_id
         return orders, ordered_orders_by_w, tasks    
 
 

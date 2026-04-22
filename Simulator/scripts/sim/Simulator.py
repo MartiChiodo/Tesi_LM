@@ -171,7 +171,7 @@ class Simulator:
 
         state.future_events.push(Event(time=1e-8, type=EventType.ARRIVAL_ORDER))
         if self.config.optimization_enabled:
-            state.future_events.push(Event(time=15*60, type=EventType.RUN_OPTIMIZER))
+            state.future_events.push(Event(time=self.config.optimization_interval, type=EventType.RUN_OPTIMIZER))
 
         while not state.future_events.is_empty() and state.current_time < time_horizon:
             event              = state.future_events.pop()
