@@ -31,60 +31,66 @@ def arrival_order(event: Event, state, sim) -> None:
         f"got {len(sim.config.order_gen_config)}"
     )
 
-    order_id = state.orders_counter
-    state.orders_counter += 1
+    n_order_to_generate = event.info 
 
-    rnd = sim.RANDOM_GENERATOR.random()
-    if rnd < sim.config.order_gen_config[1]:
-        order_size = 1
-    else:
-        order_size = sim.RANDOM_GENERATOR.geometric(p=sim.config.order_gen_config[2]) + 2
+    for _ in range(n_order_to_generate):
 
-    sku_list = [
-        sample_sku(sim.RANDOM_GENERATOR, state.warehouse.num_skus)
-        for _ in range(order_size)
-    ]
+        order_id = state.orders_counter
+        state.orders_counter += 1
 
-    o = Order(
-        order_id=order_id,
-        arrival_time=state.current_time,
-        order_size=order_size,
-        items_required=set(sku_list),
-        items_pending=set(sku_list),
-        workstation_id=None,
-        status=OrderStatus.BACKLOG
-    )
-    state.orders_in_system.push(o)
+        rnd = sim.RANDOM_GENERATOR.random()
+        if rnd < sim.config.order_gen_config[1]:
+            order_size = 1
+        else:
+            order_size = sim.RANDOM_GENERATOR.geometric(p=sim.config.order_gen_config[2]) + 2
 
-    logging.debug("Order %i arrived: items_required = %s.     [orders_in_system = %i]",
-                  order_id, sku_list, state.orders_counter - _count_closed(state))
+        sku_list = [
+            sample_sku(sim.RANDOM_GENERATOR, state.warehouse.num_skus)
+            for _ in range(order_size)
+        ]
+
+        o = Order(
+            order_id=order_id,
+            arrival_time=state.current_time,
+            order_size=order_size,
+            items_required=set(sku_list),
+            items_pending=set(sku_list),
+            workstation_id=None,
+            status=OrderStatus.BACKLOG
+        )
+        state.orders_in_system.push(o)
+
+        logging.debug("Order %i arrived: items_required = %s.     [orders_in_system = %i]",
+                    order_id, sku_list, state.orders_counter - _count_closed(state))
+        
+        if not sim.config.optimization_enabled:
+            workstation_id = assign_order_to_workstation_policy(
+                o,
+                state.warehouse.workstations
+            )
+            workstation = state.warehouse.get_workstation(workstation_id)
+            o.workstation_id = workstation_id
+            o.status = OrderStatus.WAITING
+
+            if workstation.has_open_slot():
+                state.future_events.push(Event(
+                    time=state.current_time,
+                    type=EventType.OPEN_ORDER,
+                    info=o
+                ))
+            else:
+                workstation.order_buffer.append(order_id)
+                logging.debug("Order queued at workstation %i.   [order_queue len = %i]",
+                            workstation_id, len(workstation.order_buffer))
 
     # Schedule next arrival
     interarrival_time = sim.config.order_gen_config[0]
     state.future_events.push(Event(
         time=state.current_time + interarrival_time,
-        type=EventType.ARRIVAL_ORDER
+        type=EventType.ARRIVAL_ORDER, 
+        info = 1
     ))
 
-    if not sim.config.optimization_enabled:
-        workstation_id = assign_order_to_workstation_policy(
-            o,
-            state.warehouse.workstations
-        )
-        workstation = state.warehouse.get_workstation(workstation_id)
-        o.workstation_id = workstation_id
-        o.status = OrderStatus.WAITING
-
-        if workstation.has_open_slot():
-            state.future_events.push(Event(
-                time=state.current_time,
-                type=EventType.OPEN_ORDER,
-                info=o
-            ))
-        else:
-            workstation.order_buffer.append(order_id)
-            logging.debug("Order queued at workstation %i.   [order_queue len = %i]",
-                          workstation_id, len(workstation.order_buffer))
 
 
 def open_order(event: Event, state, sim) -> None:
@@ -143,6 +149,12 @@ def open_order(event: Event, state, sim) -> None:
                 ))
         else:
             logging.debug("No tasks designed (all SKUs already covered)")
+
+    elif len(state.released_tasks) > 0:
+        state.future_events.push(Event(
+                    time=state.current_time,
+                    type=EventType.START_TASK
+                ))
 
 
 
@@ -562,6 +574,14 @@ def run_optimizer(event: Event, state, sim) -> None:
                 ),
                 id_attr="task_id",
             )
+    
+    ev_l = []
+    while len(state.future_events)>0:
+        e = state.future_events.pop()
+        if e.type != EventType.RELEASE_TASK:
+            ev_l.append(e)
+    for ev in ev_l:
+        state.future_events.push(ev)
 
     # orders were extracted from orders_in_system so I have to push them again
     # Plus ordered_orders_by_w contains idx according to orders not order_id
@@ -571,23 +591,28 @@ def run_optimizer(event: Event, state, sim) -> None:
         ability_to_open = state.warehouse.workstations[w].order_capacity - len(state.warehouse.workstations[w].opened_orders)
         for m in elem:
             o = orders[m] 
-            if o.status != OrderStatus.OPEN:
+
+            if not o.order_id in state.warehouse.workstations[w].opened_orders:
+
                 o.status = OrderStatus.WAITING
                 o.workstation_id = w
+
+                if ability_to_open > 0 and o.status != OrderStatus.OPEN:
+                    state.future_events.push(Event(
+                            time=state.current_time,
+                            type=EventType.OPEN_ORDER,
+                            info=o
+                        ))
+                    ability_to_open -= 1
+                    logging.debug("Order %i will be openend at workstation %i.   [openend orders = %i / %i]",
+                                o.order_id, w, len(state.warehouse.workstations[w].opened_orders), state.warehouse.workstations[w].order_capacity)
+                else:
+                    state.warehouse.workstations[w].order_buffer.append(o.order_id)
+                    logging.debug("Order %i queued at workstation %i.   [order_queue len = %i]",
+                                o.order_id, w, len(state.warehouse.workstations[w].order_buffer))
+
             state.orders_in_system.push(o)
-            state.warehouse.workstations[w].order_buffer.append(o.order_id)
 
-            logging.debug("Order %i queued at workstation %i.   [order_queue len = %i]",
-                          o.order_id, w, len(state.warehouse.workstations[w].order_buffer))
-
-            if ability_to_open > 0 and o.status != OrderStatus.OPEN:
-                state.future_events.push(Event(
-                        time=state.current_time,
-                        type=EventType.OPEN_ORDER,
-                        info=o
-                    ))
-                state.warehouse.workstations[w].order_buffer.remove(o.order_id)
-                ability_to_open -= 1
 
 
     # Releasing new tasks

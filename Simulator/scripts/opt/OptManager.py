@@ -13,8 +13,8 @@ from Simulator.scripts.opt.decomposition_benchmark import solve_by_decomposition
 # Constants
 
 OBATCH_SIZE = 50
-TIME_UNIT   = 20    # seconds per discrete period (Barnhart)
-N_TIME      = 60    # number of discrete periods  
+TIME_UNIT   = 20    # seconds per discrete period 
+N_TIME      = 60   # number of discrete periods  
 
 
 
@@ -213,7 +213,7 @@ class OptManager:
                     if order_id in visit.orders:
                         covered |= visit.items
                 remaining = list(o.items_pending - covered)
-                if remaining:
+                if len(remaining) > 0:
                     ws_orders.append(o)
                     ws_orders_items.append(remaining)
 
@@ -247,10 +247,13 @@ class OptManager:
 
             # start time extraction
             start_t = None
-            for t in range(self.N_TIME):
-                if v2_sol[m, t] > 0.5:
-                    start_t = t
-                    break
+            if orders[m].order_id in state.warehouse.workstations[w].opened_orders:
+                start_t = 0
+            else:
+                for t in range(self.N_TIME):
+                    if v2_sol[m, t] > 0.5:
+                        start_t = t
+                        break
 
             # fallback if never set
             order_start_time[m] = start_t if start_t is not None else self.N_TIME
@@ -264,8 +267,8 @@ class OptManager:
 
 
         ### TASK DESIGN 
-        # 1. Lookup maps 
 
+        # Lookup maps
         order_to_ws: dict[int, int] = {}
         for m in range(n_orders):
             for w in range(self.n_workstations):
@@ -292,38 +295,67 @@ class OptManager:
                         item_to_time[(i, m)] = t
                         break
 
-        tasks = []
+
+        # Per ogni pod: (t, w) → {items, orders} 
+        # pod_activity[p][(t, w)] = {"items": set, "orders": set}
+        pod_activity: dict[int, dict[tuple[int,int], dict]] = defaultdict(
+            lambda: defaultdict(lambda: {"items": set(), "orders": set()})
+        )
+
+        for (i, m), p in item_to_pod.items():
+            if (i, m) not in item_to_time:
+                continue
+            t = item_to_time[(i, m)]
+            w = order_to_ws[m]
+            pod_activity[p][(t, w)]["items"].add(i)
+            pod_activity[p][(t, w)]["orders"].add(orders[m].order_id)
+
+
+        # Raggruppa timestep consecutivi per pod → blocchi = task
+        # Per ogni pod, ordina i timestep attivi e raggruppa quelli contigui (|t1-t2|<=1).
+        # Ogni blocco contiguo diventa un task; dentro ogni blocco si splitta per workstation.
+
+        tasks: list[Task] = []
         task_id = state.task_counter
 
-        picking_operations_by_pod_and_t = {(p, t) : [(i, m) for (i,m), p1 in item_to_pod.items()] for p in range(self.n_pods)}
-        for p in range(self.n_pods):
-            o_set = set()
-            i_set = set()
-            for t in range(self.N_TIME):
-                if (p, t) in picking_operations_by_pod_and_t.keys():
-                    for (i,m) in picking_operations_by_pod_and_t[(p, t)]:
-                        o_set.add(m)
-                        i_set.add(i)
+        for p, tw_data in pod_activity.items():
+            active_ts = sorted(set(t for (t, w) in tw_data.keys()))
 
-                    if (p, t+1) not in picking_operations_by_pod_and_t.keys():
-                        # Definisco il task 
-                        w_set = set([order_to_ws[m] for m in o_set])
-                        task = Task(task_id = task_id, pod_id = p, robot_id=None, priority = t*self.TIME_UNIT, stops = [])
+            blocks: list[list[int]] = []
+            current_block = [active_ts[0]]
+            for t in active_ts[1:]:
+                if t - current_block[-1] <= 1:
+                    current_block.append(t)
+                else:
+                    blocks.append(current_block)
+                    current_block = [t]
+            blocks.append(current_block)
 
-                        if len(w_set) > 0:
-                            for w in w_set:
-                                o_set_v = set([orders[m].order_id for m in o_set if order_to_ws[m] == w])
-                                i_set_V = set([i for i in i_set if x1_sol[i, m, p] == 1])
+            for block in blocks:
+                ws_data: dict[int, dict] = defaultdict(lambda: {"items": set(), "orders": set()})
+                for t in block:
+                    for (bt, w), data in tw_data.items():
+                        if bt == t:
+                            ws_data[w]["items"].update(data["items"])
+                            ws_data[w]["orders"].update(data["orders"])
 
-                                task.stops.append(Visit(workstation_id=w, orders=o_set_v, items=i_set_V))
+                stops = [
+                    Visit(workstation_id=w, orders=d["orders"], items=d["items"])
+                    for w, d in ws_data.items()
+                ]
 
-                        tasks.append(task)
-                        task_id += 1
+                task = Task(
+                    task_id=task_id,
+                    pod_id=p,
+                    robot_id=None,
+                    stops=stops,
+                    priority=min(block),  
+                )
+                task_id += 1
+                tasks.append(task)
 
-                        o_set = set()
-                        i_set = ()
+
                                 
-
         state.task_counter = task_id
         return orders, ordered_orders_by_w, tasks    
 

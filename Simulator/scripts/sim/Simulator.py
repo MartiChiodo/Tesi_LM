@@ -43,10 +43,12 @@ class SimulatorConfig:
 
     order_gen_config    : list[float]   [orders_per_hour, prob_1_item_order, geo_dist_param].
     warm_up             : float         Seconds discarded from statistics at run start. Default 0.
+    path_to_save_stat   : str           Path in where to save report file.s
     optimization_enabled: bool          Optimisation-based assignment if True. Default False.
     """
     order_gen_config:        list[float]
     warm_up:                 float = 0.0
+    path_to_save_stat:       str = "Simulator/output/report.txt"
     optimization_enabled:    bool  = False
     optimization_interval :  float = 15*60
 
@@ -169,9 +171,9 @@ class Simulator:
         state    = self.state
         dispatch = self._build_dispatch()
 
-        state.future_events.push(Event(time=1e-8, type=EventType.ARRIVAL_ORDER))
+        state.future_events.push(Event(time=1e-8, type=EventType.ARRIVAL_ORDER, info = 10))
         if self.config.optimization_enabled:
-            state.future_events.push(Event(time=self.config.optimization_interval, type=EventType.RUN_OPTIMIZER))
+            state.future_events.push(Event(time=60, type=EventType.RUN_OPTIMIZER))
 
         while not state.future_events.is_empty() and state.current_time < time_horizon:
             event              = state.future_events.pop()
@@ -191,7 +193,7 @@ class Simulator:
         #  Statistics 
         logging.info("  END SIMULATION.\n")
         logging.info("Writing statistics report ...")
-        self.STAT_MANAGER.return_statistics()
+        self.STAT_MANAGER.return_statistics(output_path = self.config.path_to_save_stat)
         self.STAT_MANAGER.reset_statistics()
 
 

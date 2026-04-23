@@ -88,7 +88,7 @@ class StatManager:
 
     #  Report 
 
-    def return_statistics(self, output_path: str = "Simulator/output/report.txt") -> None:
+    def return_statistics(self, output_path: str) -> None:
         """Compute, print, and save a summary report."""
         report = self.build_report()
         print(report)

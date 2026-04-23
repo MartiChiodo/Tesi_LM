@@ -53,8 +53,8 @@ def main():
     warehouse.plot(save=True) """
 
     # --- TODO ---
-    # SKU distribution among pods
-    # Define RUN_OPTIMIZER handler
+    # SKU distribution among pods (for now truncated normal)
+    # Define RUN_OPTIMIZER handler (defined decomposition benchmark)
     # Sistemare la configurazione dei parametri
 
     ### SIMULATION
@@ -62,8 +62,10 @@ def main():
         random_generator = gen,
         config=SimulatorConfig(
             order_gen_config=[config.INTERRARIVAL_TIME_ORDER, config.PROB_1_ITEM_ORDER, config.GEO_DIST_PARAM_ORDER],
-            warm_up = 15*60,
-            optimization_enabled=False
+            warm_up = 30*60,
+            path_to_save_stat = 'Simulator/output/report_opt',
+            optimization_enabled=True,
+            optimization_interval=config.DELTA_T_OPT # 15*60
         ),
         warehouse_factory = lambda: Warehouse(
             random_generator            = gen,

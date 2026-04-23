@@ -3,14 +3,14 @@
 
 
 # Warehouse Layout 
-NUM_PODS         = 40
+NUM_PODS         = 50
 NUM_SKUS         = 1000
 NUM_ROBOTS       = 9
-NUM_WORKSTATIONS = 5
+NUM_WORKSTATIONS = 4
 NUM_SKUS_PER_POD = 20
 
-GRID_ROWS = 8    # number of rows for the pod grid
-GRID_COLS = 5    # number of columns for the pod grid
+GRID_ROWS = 5    # number of rows for the pod grid
+GRID_COLS = 10    # number of columns for the pod grid
 
 ROBOT_SPEED = 0.34       # cells per seconds (circa 1 m/s assuming cells are squares 1.5mx1.5m and L1 paths)
 
@@ -29,7 +29,7 @@ INTERRARIVAL_TIME_ORDER = 3600/175       # equivalent of 175 orders per hour (un
 
 
 # Simulation control 
-TIME_HORIZON  = 4*60*60       # total simulation time in seconds 
+TIME_HORIZON  = 2*60*60       # total simulation time in seconds 
 DELTA_T_OPT = 15*60       # optimizer is called every DELTA_T_OPT seconds
 
 
