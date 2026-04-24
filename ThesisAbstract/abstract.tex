@@ -1,0 +1,34 @@
+\documentclass[11pt]{article}
+%\usepackage{simplemargins}
+
+%\usepackage[square]{natbib}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{a4wide} 
+
+% titel en auteur van het document
+\title{Abstract Master's Thesis}
+\author{Chiodo Martina}
+\date{}
+
+\begin{document}
+\maketitle
+
+The Robotic Mobile Fulfilment System (RMFS) is a new type of robotized, parts-to-picker material handling system, designed especially for e-commerce warehouses.  In such environments, the efficient coordination of robots, storage pods and picking workstations is essential to ensure high overall performance. Optimizing decisions such as which orders are processed at each workstation, which pods supply which orders, and the sequence of picking operations is particularly challenging due to the combinatorial nature of the problem and the dynamic evolution of the system under stochastic order arrivals and operational uncertainty. 
+
+Among these decisions, the design of picking tasks at the workstation level plays a crucial role, as it directly affects both the number of pod movements, potentially leading to congestion, and the flow time of orders. This process involves selecting which pods should be retrieved and determining how multiple orders can be grouped within the same picking operation to maximize the so-called \textit{pile-on}\footnote{The \textit{pile-on} is defined as the average number of units that are picked from a pod every time a pod is presented to a picker at a pick station.}, thus improving operational efficiency. 
+
+This thesis addresses the task design problem and the assignment of orders to workstations in RMFS by comparing two decision-making approaches. The first approach relies on greedy policies, which generate fast decisions based on local information and immediate gains. The second approach is based on a mathematical optimization model that exploits global information, allowing for a greater level of lookahead in the decision-making process. In particular, the model incorporates a space-time network representation to anticipate congestion effects. Due to the combinatorial complexity of the model, a heuristic solution method is employed to produce a solution within limited computational time. 
+
+The proposed approaches are evaluated within a discrete-event simulation framework that captures the dynamic behaviour of the warehouse system, including stochastic order arrivals and system stochasticity. Within this framework, decisions are periodically re-optimized by solving a static optimization problem which captures the snapshot of the warehouse at a given istant, while the simulation evolves over a longer time horizon to assess system performance.  While congestions among robots naturally contribute to the variability, the precise routing of robots and the dispatching decisions are not explicitly modelled in this work. The simulation provides a reproducible environment for comparing the two strategies and allows the collection of key performance indicators (KPIs), such as order flow times and the utilization of pods and workstations. 
+
+The main objective of this work is to analyse the trade-off between computational efficiency and solution quality, determining whether more sophisticated optimization-based methods can bring significant advantages over simpler and faster heuristic policies in real-time operations. Moreover, the simulation framework is a flexible tool for testing alternative heuristic strategies for solving the optimization model, allowing the exploration of different system configurations, operational parameters, and solution approaches. 
+
+In recent literature, heuristic strategies for solving RMFS related problems cover a wide ranges of techniques. These include decomposition methods, in which the global problem is split into smaller and more maneagable optimization models soved sequentially; local search strategies, such as Variable Neighbourhood Search (VNS) or Large Neighbourhood Search (LNS),
+are also commonly applied, iteratively exploring the solution space by building neighbourhoods through greedy rules or by leveraging data-driven insights, even from machine learning.
+These heuristics provide practical ways to handle large combinatorial optimization problems, balancing solution quality and time computation.
+
+
+\end{document}
