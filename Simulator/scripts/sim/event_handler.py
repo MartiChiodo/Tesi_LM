@@ -6,7 +6,7 @@ Each handler has signature ``(event, state, sim)`` where:
 - *sim*   : Simulator       — immutable config (sim.config) and RNG (sim.RANDOM_GENERATOR).
 """
 
-import logging
+import logging, time
 from Simulator.scripts.core.entities import Order, Event, Task, Visit
 from Simulator.scripts.core.warehouse import Warehouse
 from Simulator.scripts.core.enums import OrderStatus, RobotStatus, PodStatus, WorkstationPickingStatus, EventType
@@ -64,10 +64,12 @@ def arrival_order(event: Event, state, sim) -> None:
                     order_id, sku_list, state.orders_counter - _count_closed(state))
         
         if not sim.config.optimization_enabled:
+            st = time.time()
             workstation_id = assign_order_to_workstation_policy(
                 o,
                 state.warehouse.workstations
             )
+            sim.STAT_MANAGER.decisions_computing_time += time.time() - st
             workstation = state.warehouse.get_workstation(workstation_id)
             o.workstation_id = workstation_id
             o.status = OrderStatus.WAITING
@@ -132,6 +134,7 @@ def open_order(event: Event, state, sim) -> None:
                   len(workstation.opened_orders), workstation.order_capacity)
 
     if not sim.config.optimization_enabled:
+        st = time.time()
         tasks, state.task_counter = design_tasks_for_ws(
             workstation=workstation,
             warehouse=state.warehouse,
@@ -139,6 +142,7 @@ def open_order(event: Event, state, sim) -> None:
             task_counter=state.task_counter,
             active_tasks=state.active_tasks
         )
+        sim.STAT_MANAGER.decisions_computing_time += time.time() - st
 
         if tasks:
             total_items = sum(len(t.stops[0].items) for t in tasks)
@@ -212,20 +216,17 @@ def start_task(event: Event, state, sim) -> None:
     while not state.released_tasks.is_empty():
         candidate = state.released_tasks.pop()
         if sim.config.optimization_enabled:
-            # I check if the orders are already opened
-            valid = True
+            # I check if the at least on order is already opened
+            open_o = 0
             for v in candidate.stops:
                 ws = state.warehouse.workstations[v.workstation_id]
                 for o in v.orders:
-                    if o not in ws.opened_orders:
-                        valid = False
-                        logging.debug("Task %i blocked: order %i for task not opened yet at ws %i.     [released tasks = %i]",
-                            candidate.task_id, o, ws.workstation_id, len(state.released_tasks))
-                        break
-                if not valid:
-                    break
-            if not valid:
+                    if o in ws.opened_orders:
+                        open_o += 1
+            if open_o == 0:
                 skipped_t.append(candidate)
+                logging.info("Task %i blocked: all the orders it should serve are not open yet.",
+                            candidate.task_id)
                 continue
 
         pod = state.warehouse.get_pod(candidate.pod_id)
@@ -386,12 +387,14 @@ def end_picking(event: Event, state, sim) -> None:
         info=[workstation.workstation_id, WorkstationPickingStatus.IDLE, state.current_time]
     )
 
-    logging.debug("Ended picking for orders %s at workstation %i.    [picking_buffer len = %s]",
-                  completed_visit.orders, completed_visit.workstation_id, workstation.picking_buffer)
+    logging.debug("Ended picking at workstation %i.    [picking_buffer len = %s]",
+                   completed_visit.workstation_id, workstation.picking_buffer)
+    logging.debug("Task should have served orders %s, found open orders %s.",
+                  completed_visit.orders, workstation.opened_orders)
 
     task.stops.pop(0)
 
-    # ── Drain picking buffer ──────────────────────────────────────────────────
+    # Drain picking buffer 
     if workstation.picking_buffer:
         next_task_id = workstation.picking_buffer.pop(0)
         next_task    = state.active_tasks.get(next_task_id)
@@ -406,7 +409,7 @@ def end_picking(event: Event, state, sim) -> None:
         logging.debug("Dequeued task %i from picking buffer at workstation %i.   [buffer len = %i]",
                       next_task_id, workstation.workstation_id, len(workstation.picking_buffer))
 
-    # ── Schedule next stop or pod return ─────────────────────────────────────
+    # Schedule next stop or pod return
     if len(task.stops) == 0:
         pod = state.warehouse.get_pod(task.pod_id)
         return_travel_time = state.warehouse.travel_time(
@@ -435,29 +438,31 @@ def end_picking(event: Event, state, sim) -> None:
         ))
         logging.debug("Task %i heading to workstation %i.", task.task_id, next_visit.workstation_id)
 
-    # ── Update order states ───────────────────────────────────────────────────
+    # Update order states 
     completed_orders = []
     for order_id in completed_visit.orders:
-        order = state.orders_in_system.get(order_id)
-        if order is None:
-            continue
-        order.items_pending -= completed_visit.items
-        assert len(order.items_pending) >= 0, (
-            f"Order {order_id} has negative pending items after picking"
-        )
-        if len(order.items_pending) == 0:
-            completed_orders.append(order_id)
-            state.future_events.push(Event(
-                time=state.current_time,
-                type=EventType.CLOSE_ORDER,
-                info=order
-            ))
+        if order_id in workstation.opened_orders:
+            order = state.orders_in_system.get(order_id)
+            if order is None:
+                continue
+            order.items_pending -= completed_visit.items
+            assert len(order.items_pending) >= 0, (
+                f"Order {order_id} has negative pending items after picking"
+            )
+            if len(order.items_pending) == 0:
+                completed_orders.append(order_id)
+                state.future_events.push(Event(
+                    time=state.current_time,
+                    type=EventType.CLOSE_ORDER,
+                    info=order
+                ))
 
     # Skip redesign if any order closed: close_order will handle it
     if completed_orders:
         return
 
     if not sim.config.optimization_enabled:
+        st = time.time()
         new_tasks, state.task_counter = design_tasks_for_ws(
             workstation=workstation,
             warehouse=state.warehouse,
@@ -465,6 +470,7 @@ def end_picking(event: Event, state, sim) -> None:
             task_counter=state.task_counter,
             active_tasks=state.active_tasks
         )
+        sim.STAT_MANAGER.decisions_computing_time += time.time() - st
         if new_tasks:
             for new_task in new_tasks:
                 state.future_events.push(Event(
@@ -568,7 +574,9 @@ def run_optimizer(event: Event, state, sim) -> None:
     schedule release events, and queue the next optimization run.
     """
 
+    st = time.time()
     orders, ordered_orders_by_w, tasks = sim.OPT_MANAGER.solve_task_design_and_assignment(sim, state)
+    sim.STAT_MANAGER.decisions_computing_time += time.time() - st
 
     # Reset released_tasks queue
     state.released_tasks = PriorityQueue(
@@ -589,8 +597,7 @@ def run_optimizer(event: Event, state, sim) -> None:
         state.future_events.push(ev)
 
     # Assign orders to workstations.
-    # `ordered_orders_by_w` uses indices into `orders` (not order_id), so we re-push
-    # each order into orders_in_system after updating its assignment.
+    # `ordered_orders_by_w` uses indices into `orders` (not order_id),
     for w, elem in ordered_orders_by_w.items():
         state.warehouse.workstations[w].order_buffer = []
         ability_to_open = (
@@ -627,8 +634,6 @@ def run_optimizer(event: Event, state, sim) -> None:
                         o.order_id, w,
                         len(state.warehouse.workstations[w].order_buffer),
                     )
-
-            state.orders_in_system.push(o)
 
     # Schedule task release events; offset by priority to stagger execution
     logging.warning("Task designing ended. Optimizer designed %i tasks.", len(tasks))

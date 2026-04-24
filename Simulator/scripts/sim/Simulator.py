@@ -87,7 +87,7 @@ class SimulatorState:
     closed_orders:    int = 0
 
 
-def _build_state(warehouse: Warehouse) -> SimulatorState:
+def build_state(warehouse: Warehouse) -> SimulatorState:
     """Build a clean :class:`SimulatorState` from a fresh *warehouse*."""
     return SimulatorState(
         current_time=0.0,
@@ -159,7 +159,7 @@ class Simulator:
         """
         # Reset: build a clean state for this replica 
         fresh_warehouse   = self._warehouse_factory()
-        self.state        = _build_state(fresh_warehouse)
+        self.state        = build_state(fresh_warehouse)
         self.config.time_horizon = time_horizon
 
         assert self.config.warm_up < time_horizon, "Warm-up for KPIs collection exceeds simulation time horizon."
@@ -171,7 +171,7 @@ class Simulator:
         # Event loop 
         _log_banner(time_horizon)
         state    = self.state
-        dispatch = self._build_dispatch()
+        dispatch = self.build_dispatch()
 
         state.future_events.push(Event(time=1e-8, type=EventType.ARRIVAL_ORDER, info = 30))
         if self.config.optimization_enabled:
@@ -201,7 +201,7 @@ class Simulator:
 
     # Private helpers
 
-    def _build_dispatch(self) -> dict:
+    def build_dispatch(self) -> dict:
         """
         Return the EventType → handler mapping.
 

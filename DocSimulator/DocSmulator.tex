@@ -17,6 +17,8 @@
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 
+\usepackage{optidef}
+
 
 % Margins
 \geometry{margin=2.5cm}
@@ -481,6 +483,28 @@ The collected statistics are grouped into three categories:
 \end{itemize}
 
 Finally, all statistics can be aggregated to compute global performance indicators and support system-level analysis.
+
+
+
+\newpage
+Just some private notes ... 
+\section{Decomposition}
+
+\paragraph{First stage: Order-Workstation and Order-Item-Pod Assignments}
+
+\begin{mini!}
+    {z_{mw}, x_{imp}}
+    {\sum_{w \in \mathcal{W}} \sum_{p \in \mathcal{P}} y_{wp} \label{M1_Obj}}
+    {\label{M1}}
+    {}
+    \addConstraint{\sum_{w \in \mathcal{W}} z_{mw}}{ = 1, \label{M1_Constr1}}{\forall m \in \mathcal{M}}
+    \addConstraint{\sum_{p \in \mathcal{P}_i} x_{imp}}{= 1, \label{M1_Constr2}}{\forall m \in \mathcal{M}, i \in \mathcal{I}_m}
+    \addConstraint{y_{wp} -x_{imp} - z_{mw}}{\geq - 1, \label{M1_Constr3}}{\forall w \in \mathcal{W}, m \in \mathcal{M}, i \in \mathcal{I}_m, p \in \mathcal{P}_i}
+    \addConstraint{\sum_{m \in \mathcal{M}}|\mathcal{I}_m| z_{mw}}{\leq \overline{I}, \label{M1_Constr4}}{\forall w \in \mathcal{W}}
+    \addConstraint{\sum_{m \in \mathcal{M}}|\mathcal{I}_m| z_{mw}}{\geq \underline{I}, \label{M1_Constr5}}{\forall w \in \mathcal{W}}
+\end{mini!}
+
+
 
 \newpage
 \printbibliography

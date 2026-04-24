@@ -12,6 +12,7 @@ def solve_by_decomposition(OptManager, sim, state):
 
     orders, orders_items = OptManager.extract_orders(state)
     n_orders = len(orders)
+    relevant_pairs_for_x = [(i, m) for m in range(n_orders) for i in orders_items[m]]
 
     if n_orders == 0:
         logging.debug("[OptManager] No orders to optimise — skipping model build.")
@@ -30,9 +31,9 @@ def solve_by_decomposition(OptManager, sim, state):
     # z1[m,w]   = 1 if order m is assigned to workstation w
     # x1[i,m,p] = 1 if item i of order m is retrieved from pod p
     # y1[w,p]   = 1 if pod p must visit workstation w (derived from x1 and z1)
-    z1 = model1.addVars(n_orders, n_w,                        vtype=gb.GRB.BINARY)
-    x1 = model1.addVars(OptManager.n_skus, n_orders, n_p,    vtype=gb.GRB.BINARY)
-    y1 = model1.addVars(n_w, n_p,                            vtype=gb.GRB.BINARY)
+    z1 = model1.addVars(n_orders, n_w, vtype=gb.GRB.BINARY)
+    x1 = model1.addVars(len(relevant_pairs_for_x), n_p, vtype=gb.GRB.BINARY)
+    y1 = model1.addVars(n_w, n_p, vtype=gb.GRB.BINARY)
 
     # EC7: each order is assigned to exactly one workstation
     for m in range(n_orders):
@@ -40,25 +41,23 @@ def solve_by_decomposition(OptManager, sim, state):
             gb.quicksum(z1[m, w] for w in range(n_w)),
             gb.GRB.EQUAL, 1, name='EC7')
 
-    for m in range(n_orders):
+    for im, (i,_) in enumerate(relevant_pairs_for_x):
         # EC8: each item of the order is retrieved from exactly one pod that stocks it
-        for i in orders_items[m]:
-            model1.addLConstr(
-                gb.quicksum(x1[i, m, p] for p in OptManager.pod_indices_by_sku[i]),
-                gb.GRB.EQUAL, 1, name='EC8')
+        model1.addLConstr(
+            gb.quicksum(x1[im, p] for p in OptManager.pod_indices_by_sku[i]),
+            gb.GRB.EQUAL, 1, name='EC8')
 
         # EC10: y1[w,p] is forced to 1 when both x1[i,m,p] and z1[m,w] are 1
         for w in range(n_w):
-            for i in orders_items[m]:
-                for p in OptManager.pod_indices_by_sku[i]:
-                    model1.addLConstr(
-                        y1[w, p], gb.GRB.GREATER_EQUAL,
-                        x1[i, m, p] + z1[m, w] - 1, name='EC10')
+            for p in OptManager.pod_indices_by_sku[i]:
+                model1.addLConstr(
+                    y1[w, p], gb.GRB.GREATER_EQUAL,
+                    x1[im, p] + z1[m, w] - 1, name='EC10')
 
-    # EC11: workload balancing — each workstation handles between 10% and 90% of total items
+    # EC11: workload balancing — each workstation handles between 1% and 9% of total items
     total_items = sum(len(i) for i in orders_items)
-    lower_I = total_items * 1 / 10
-    upper_I = total_items * 9 / 10
+    lower_I = total_items * 5 / 100
+    upper_I = total_items * 95 / 100
     for w in range(n_w):
         items_at_w = gb.quicksum(z1[m, w] * len(orders_items[m]) for m in range(n_orders))
         model1.addLConstr(items_at_w, gb.GRB.LESS_EQUAL,    upper_I, name='EC11_upper')
@@ -66,9 +65,9 @@ def solve_by_decomposition(OptManager, sim, state):
 
     # Fix assignment for orders already open at each workstation
     for w in range(n_w):
-        for id_o in state.warehouse.workstations[w].opened_orders:
-            m = next((i for i, o in enumerate(orders) if o.order_id == id_o), None)
-            model1.addLConstr(z1[m, w] == 1, name='InitialCond')
+        for m in range(n_orders):
+            if orders[m].order_id in state.warehouse.workstations[w].opened_orders:
+                model1.addLConstr(z1[m, w] == 1, name='InitialCond')
 
     # Minimize total pod-workstation visits (proxy for travel distance)
     model1.setObjective(
@@ -82,27 +81,30 @@ def solve_by_decomposition(OptManager, sim, state):
 
     if model1.Status == gb.GRB.INFEASIBLE:
         model1.computeIIS()
-        model1.write("scripts/opt/iis.ilp")
+        model1.write("Simulator/scripts/opt/iis.ilp")
 
     # Extract stage-1 solution: map each order to its workstation and each (item, order) to its pod
     z1_sol = model1.getAttr(gb.GRB.Attr.X, z1)
     x1_sol = model1.getAttr(gb.GRB.Attr.X, x1)
 
-    orders_by_workstation = [[] for _ in range(n_w)]
+    orders_by_workstation = [set() for _ in range(n_w)] # workstation index w → order index m
+    order_to_ws_m: dict[int, int] = {}   # order index m → workstation index w
     pod_of_item = {}  # (sku, order_idx) -> pod_idx
 
-    for m in range(n_orders):
+    for im, (i,m) in enumerate(relevant_pairs_for_x):
         for w in range(n_w):
             if z1_sol[m, w] > 0.5:
-                orders_by_workstation[w].append(m)
+                orders_by_workstation[w].add(m)
+                order_to_ws_m[m] = w
                 break
-        for i in orders_items[m]:
-            for p in OptManager.pod_indices_by_sku[i]:
-                if x1_sol[i, m, p] > 0.5:
-                    pod_of_item[(i, m)] = p
-                    break
+        for p in OptManager.pod_indices_by_sku[i]:
+            if x1_sol[im, p] > 0.5:
+                pod_of_item[im] = p
+                break
 
-
+    from_RelPod_to_PodId = list(set(pod_of_item.values()))
+    from_PodId_to_RelPod = {id_p:rel_p for rel_p, id_p in enumerate(from_RelPod_to_PodId)}
+    
 
     ### STAGE 2: SCHEDULING 
 
@@ -114,11 +116,11 @@ def solve_by_decomposition(OptManager, sim, state):
     # v2[m,t]   = 1 if order m is actively being picked at time t
     # f2[m,t]   = 1 if all items of order m are ready by t (triggers opening)
     # g2[m,t]   = 1 if order m completes at t (all items picked simultaneously)
-    x2 = model2.addVars(OptManager.n_skus, n_orders, OptManager.N_TIME, vtype=gb.GRB.BINARY)
-    y2 = model2.addVars(n_p, n_a,                                        vtype=gb.GRB.BINARY)
-    v2 = model2.addVars(n_orders, OptManager.N_TIME,                     vtype=gb.GRB.BINARY)
-    f2 = model2.addVars(n_orders, OptManager.N_TIME,                     vtype=gb.GRB.BINARY)
-    g2 = model2.addVars(n_orders, OptManager.N_TIME,                     vtype=gb.GRB.BINARY)
+    x2 = model2.addVars(len(relevant_pairs_for_x), OptManager.N_TIME, vtype=gb.GRB.BINARY)
+    y2 = model2.addVars(len(from_RelPod_to_PodId), n_a, vtype=gb.GRB.BINARY)
+    v2 = model2.addVars(n_orders, OptManager.N_TIME, vtype=gb.GRB.BINARY)
+    f2 = model2.addVars(n_orders, OptManager.N_TIME, vtype=gb.GRB.BINARY)
+    g2 = model2.addVars(n_orders, OptManager.N_TIME, vtype=gb.GRB.BINARY)
 
     for w in range(n_w):
         w_pos = state.warehouse.workstations[w].position
@@ -127,27 +129,27 @@ def solve_by_decomposition(OptManager, sim, state):
             model2.addLConstr(
                 gb.quicksum(v2[m, t] for m in orders_by_workstation[w]),
                 gb.GRB.LESS_EQUAL, OptManager.CAP_WS, name='EC13')
-
+            
             # EC14: time capacity — item picks and pod arrivals must fit within TIME_UNIT
             if t > 0:
                 item_work = gb.quicksum(
-                    OptManager.DELTA_ITEM * (x2[i, m, t] - x2[i, m, t - 1])
-                    for m in orders_by_workstation[w]
-                    for i in orders_items[m])
+                    OptManager.DELTA_ITEM * (x2[im, t] - x2[im, t - 1])
+                    for im, (_,m) in enumerate(relevant_pairs_for_x)
+                    if m in orders_by_workstation[w])
                 pod_arrivals = gb.quicksum(
-                    OptManager.DELTA_POD * y2[p, a]
-                    for p in range(n_p)
+                    OptManager.DELTA_POD * y2[rel_p, a]
+                    for rel_p in range(len(from_RelPod_to_PodId))
                     for a in OptManager.incoming_arc_idx[(w_pos, t)]
                     if a < len(OptManager.travelling_arcs))
                 model2.addLConstr(
                     item_work + pod_arrivals,
-                    gb.GRB.LESS_EQUAL, OptManager.TIME_UNIT, name='EC14')
+                    gb.GRB.LESS_EQUAL, 3*OptManager.TIME_UNIT, name='EC14')
 
-    for p in range(n_p):
+    for rel_p in range(len(from_RelPod_to_PodId)):
         # EC15: flow conservation at t=0 — each pod departs from its storage location
         model2.addLConstr(
-            gb.quicksum(y2[p, a] for a in OptManager.outgoing_arc_idx[
-                (state.warehouse.pods[p].storage_location, 0)]),
+            gb.quicksum(y2[rel_p, a] for a in OptManager.outgoing_arc_idx[
+                (state.warehouse.pods[from_RelPod_to_PodId[rel_p]].storage_location, 0)]),
             gb.GRB.EQUAL, 1, name=f'EC15_pod{p}_iniz')
 
         # EC16: flow conservation at intermediate nodes (pod cannot appear or vanish)
@@ -155,58 +157,70 @@ def solve_by_decomposition(OptManager, sim, state):
             if node[1] in (0, OptManager.N_TIME - 1):
                 continue
             model2.addLConstr(
-                gb.quicksum(y2[p, a] for a in OptManager.incoming_arc_idx[node])
-                - gb.quicksum(y2[p, a] for a in OptManager.outgoing_arc_idx[node]),
-                gb.GRB.EQUAL, 0, name=f'EC16_pod{p}_nodo{node}')
+                gb.quicksum(y2[rel_p, a] for a in OptManager.incoming_arc_idx[node])
+                - gb.quicksum(y2[rel_p, a] for a in OptManager.outgoing_arc_idx[node]),
+                gb.GRB.EQUAL, 0, name=f'EC16_pod{from_RelPod_to_PodId[rel_p]}_nodo{node}')
 
     # TODO: add congestion constraints
 
-    for w in range(n_w):
-        w_pos = state.warehouse.workstations[w].position
-        for m in orders_by_workstation[w]:
-            for i in orders_items[m]:
-                p = pod_of_item[(i, m)]
-                # EC18: item cannot be picked at t=0; pick only after pod arrives at workstation
-                model2.addLConstr(x2[i, m, 0], gb.GRB.EQUAL, 0, name='EC18')
-                for t in range(1, OptManager.N_TIME):
-                    model2.addLConstr(
-                        x2[i, m, t] - x2[i, m, t - 1],
-                        gb.GRB.LESS_EQUAL,
-                        gb.quicksum(y2[p, a] for a in OptManager.incoming_arc_idx[(w_pos, t)]),
-                        name='EC18')
+    
+    for im, (i,m) in enumerate(relevant_pairs_for_x):
+        w_pos = state.warehouse.workstations[order_to_ws_m[m]].position
+        p_id = pod_of_item[im]
+        rel_p = from_PodId_to_RelPod[p_id]
+        # EC18: item cannot be picked at t=0; pick only after pod arrives at workstation
+        model2.addLConstr(x2[im, 0], gb.GRB.EQUAL, 0, name='EC18')
+        for t in range(1, OptManager.N_TIME):
+            model2.addLConstr(
+                x2[im, t] - x2[im, t - 1],
+                gb.GRB.LESS_EQUAL,
+                gb.quicksum(y2[rel_p, a] for a in OptManager.incoming_arc_idx[(w_pos, t)]),
+                name='EC18')
 
-    for m in range(n_orders):
+    for im, (i,m) in enumerate(relevant_pairs_for_x):
         for t in range(OptManager.N_TIME):
-            for i in orders_items[m]:
-                if t > 0:
-                    # EC19: x2 is non-decreasing (once picked, stays picked)
-                    model2.addLConstr(x2[i, m, t] >= x2[i, m, t - 1], name='EC19')
-                    model2.addLConstr(v2[m, t] <= x2[i, m, t],          name='picking_only_if_m_open')
-                    model2.addLConstr(v2[m, t] >= v2[m, t - 1] - g2[m, t], name='continuity_of_v2')
+            if t > 0:
+                # EC19: x2,f2 and g2 are non-decreasing (once picked, stays picked)
+                model2.addLConstr(x2[im, t] >= x2[im, t - 1], name='EC19')
+                model2.addLConstr(f2[m, t] >= f2[m, t-1], name='f_monocity') 
+                model2.addLConstr(g2[m, t] >= g2[m, t-1], name='g_monocity') 
 
-                # EC21/EC22: link f2 and g2 to item completion status
-                model2.addLConstr(f2[m, t] >= x2[i, m, t], name='EC21')
-                model2.addLConstr(g2[m, t] <= x2[i, m, t], name='EC22')
+                model2.addLConstr(v2[m, t] >= v2[m, t - 1] - g2[m, t], name='continuity_of_v2')
+                model2.addLConstr(x2[im, t] - x2[im, t - 1] <= v2[m, t], name='pick_only_if_active')
+            
+            # EC21/EC22: link f2 and g2 to item completion status
+            model2.addLConstr(f2[m, t] >= x2[im, t], name='EC21')
+            if t > 0:
+                model2.addLConstr(g2[m, t] <= x2[im, t-1], name='EC22')
+                # Why? I have somehow to allow 1-item order to stay open for one at least one period
 
             # EC20: v2 = f2 - g2 (order is active iff started but not yet complete)
             model2.addLConstr(v2[m, t] == f2[m, t] - g2[m, t], name='EC20')
+
+
+    for m in range(n_orders):
+        for t in range(OptManager.N_TIME-1):
             # Lower bound on g2: order completes only when all items are picked
             model2.addLConstr(
-                g2[m, t] >= gb.quicksum(x2[i, m, t] for i in orders_items[m]) - (len(orders_items[m]) - 1),
+                g2[m, t+1] >= gb.quicksum(x2[im, t] for im, (_,m1) in enumerate(relevant_pairs_for_x) if m1 == m) - (len(orders_items[m]) - 1),
                 name='g_LowerB')
 
-            # Fix v2[m,0]=1 for orders already open (not yet closed by active tasks)
-            if orders[m].order_id in state.warehouse.workstations[w].opened_orders:
-                model2.addLConstr(v2[m, 0] == 1, name='InitialCond')
+        # Fix v2[m,0]=1 for orders already open (not yet closed by active tasks)
+        if orders[m].order_id in state.warehouse.workstations[order_to_ws_m[m]].opened_orders:
+            model2.addLConstr(v2[m, 0] == 1, name='InitialCond')
+        else:
+            for t in range(OptManager.N_TIME):
+                model2.addLConstr(f2[m, t] <= gb.quicksum(x2[im, t] for im, (_,m1) in enumerate(relevant_pairs_for_x) if m == m1), name='f2_active_onlyif_at_least_1_item_is_picked')
+
 
     # Maximize items picked by the end of the horizon
     model2.setObjective(
-        gb.quicksum(x2[i, m, OptManager.N_TIME - 1]
-                    for m in range(n_orders)
-                    for i in orders_items[m]),
+        gb.quicksum(x2[im, OptManager.N_TIME - 1]
+                    for im in range(len(relevant_pairs_for_x))),
         sense=gb.GRB.MAXIMIZE)
+
     model2.setParam('MIPGap', 0.20)
-    model2.setParam('ImproveStartGap', 0.25)
+    model2.setParam('TimeLimit', 200)   # hard stop
 
     logging.info('Model2 built. Solving ...')
     model2.optimize()
@@ -219,5 +233,4 @@ def solve_by_decomposition(OptManager, sim, state):
 
     x2_sol = model2.getAttr(gb.GRB.Attr.X, x2)
     v2_sol = model2.getAttr(gb.GRB.Attr.X, v2)
-    y2_sol = model2.getAttr(gb.GRB.Attr.X, y2)
     return orders, z1_sol, x1_sol, x2_sol, v2_sol

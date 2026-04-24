@@ -38,6 +38,9 @@ class StatManager:
         self.oft_tracker = OrderFlowTracker()
         self.oo_tracker  = TimeWeightedMeanTracker(n_ws, warm_up)
 
+        # Time spent in computation for decision-making
+        self.decisions_computing_time = 0
+
      
 
     def update_statistic(self, type: str, info: list) -> None:
@@ -102,6 +105,7 @@ class StatManager:
         lines: list[str] = []
         lines.append(f"Simulation with time-horizon = {config.time_horizon} sec and warm-up = {config.warm_up} sec.")
         lines.append(f"Optimization enabled = {config.optimization_enabled}")
+        lines.append(f"Computational time spent for making decisions = {self.decisions_computing_time} sec.")
         lines += self.format_orders_table()
         lines += self.format_resource_table("ROBOTS", self.rb_tracker, with_avg_oo=False)
         lines += self.format_resource_table("WORKSTATIONS", self.ws_tracker, with_avg_oo=True)
@@ -183,3 +187,4 @@ class StatManager:
         self.rb_tracker.reset()
         self.oft_tracker.reset()
         self.oo_tracker.reset()
+        self.decisions_computing_time = 0

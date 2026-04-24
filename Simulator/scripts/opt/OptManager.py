@@ -7,13 +7,14 @@ import numpy as np
 
 from Simulator.scripts.core.warehouse import Warehouse
 from Simulator.scripts.core.entities import Visit, Task
+from Simulator.scripts.core.enums import OrderStatus
 from Simulator.scripts.opt.decomposition_benchmark import solve_by_decomposition
 
 
 ### CONSTANTS
 OBATCH_SIZE = 50    # max orders pulled from backlog per optimization cycle
-TIME_UNIT   = 20    # seconds per discrete time period
-N_TIME      = 60    # number of discrete periods in the scheduling horizon
+TIME_UNIT   = 30    # seconds per discrete time period
+N_TIME      = 100    # number of discrete periods in the scheduling horizon
 
 
 
@@ -154,12 +155,6 @@ class OptManager:
         orders       : list[Order]
         orders_items : list[list[int]]   Pending SKU list per order (same index).
         """
-        # Pull up to OBATCH_SIZE orders from the backlog queue
-        backlog = state.orders_in_system.pop_many(
-            n=min(OBATCH_SIZE, len(state.orders_in_system))
-        )
-        backlog_items = [list(o.items_required) for o in backlog]
-
         ws_orders       = []
         ws_orders_items = []
 
@@ -195,7 +190,24 @@ class OptManager:
                     ws_orders.append(o)
                     ws_orders_items.append(remaining)
 
-        return backlog + ws_orders, backlog_items + ws_orders_items
+        # Backlog orders
+        backlog = []
+        backlog_items = []
+
+        n_to_consider = min(OBATCH_SIZE - len(ws_orders), len(state.orders_in_system))
+        l_to_push = []
+
+        while len(backlog) < n_to_consider and len(state.orders_in_system) > 0:
+            o = state.orders_in_system.pop()
+            l_to_push.append(o)
+            if o.status == OrderStatus.BACKLOG:
+                backlog.append(o)
+                backlog_items.append(list(o.items_pending))
+
+        for o in l_to_push:
+            state.orders_in_system.push(o)
+
+        return ws_orders + backlog, ws_orders_items + backlog_items
 
 
 
@@ -221,11 +233,13 @@ class OptManager:
         )
 
         # z1[m,w]   = 1  order m assigned to workstation w
-        # x1[i,m,p] = 1  item i of order m retrieved from pod p
-        # x2[i,m,t] = 1  item i of order m picked by time t (cumulative)
+        # x1[im,p] = 1  item i of order m retrieved from pod p
+        # x2[im,t] = 1  item i of order m picked by time t (cumulative)
         # v2[m,t]   = 1  order m actively being served at time t
 
         n_orders = len(orders)
+        relevant_pairs_for_x = [(i, m) for m in range(n_orders) 
+                                for i in state.orders_in_system.get(orders[m].order_id).items_pending]
 
         ### Step 1: extract workstation assignments and order start times 
 
@@ -244,9 +258,12 @@ class OptManager:
             else:
                 start_t = next(
                     (t for t in range(self.N_TIME) if v2_sol[m, t] > 0.5),
-                    self.N_TIME,   # fallback: push to end if never active
+                    None,   # fallback: do not consider if never active
                 )
-            order_start_time[m] = start_t
+            if start_t is None:
+                orders_by_workstation[w].remove(m)
+            else:
+                order_start_time[m] = start_t
 
         # Sort orders within each workstation by start time for downstream processing
         ordered_orders_by_w = {
@@ -255,7 +272,7 @@ class OptManager:
         }
 
 
-        ### Step 2: build lookup maps from solution 
+        ### Step 2: build lookup maps from solution s
 
         # order index → workstation index
         order_to_ws: dict[int, int] = {
@@ -267,23 +284,22 @@ class OptManager:
 
         # (sku, order_idx) → pod index
         item_to_pod: dict[tuple[int, int], int] = {}
-        for m in range(n_orders):
-            for i in orders[m].items_pending:
-                item_to_pod[(i, m)] = next(
-                    p for p in range(self.n_pods) if x1_sol[i, m, p] > 0.5
-                )
+        for im, (i,m) in enumerate(relevant_pairs_for_x):
+            item_to_pod[(i,m)] = next(
+                p for p in range(self.n_pods) if x1_sol[im, p] > 0.5
+            )
 
         # (sku, order_idx) → time step at which the item is first picked
         item_to_time: dict[tuple[int, int], int] = {}
-        for m in range(n_orders):
-            for i in orders[m].items_pending:
-                if x2_sol[i, m, 0] > 0.5:
-                    item_to_time[(i, m)] = 0
-                else:
-                    item_to_time[(i, m)] = next(
-                        t for t in range(1, self.N_TIME)
-                        if x2_sol[i, m, t] > 0.5 and x2_sol[i, m, t - 1] < 0.5
-                    )
+        for im, (i,m) in enumerate(relevant_pairs_for_x):
+            if x2_sol[im, 0] > 0.5:
+                item_to_time[(i, m)] = 0
+            else:
+                item_to_time[(i, m)] = next(
+                    (t for t in range(1, self.N_TIME)
+                    if x2_sol[im, t] > 0.5 and x2_sol[im, t - 1] < 0.5),
+                    None
+                )
 
 
         ### Step 3: aggregate pod activity by (time, workstation)
@@ -296,9 +312,10 @@ class OptManager:
             if (i, m) not in item_to_time:
                 continue
             t = item_to_time[(i, m)]
-            w = order_to_ws[m]
-            pod_activity[p][(t, w)]["items"].add(i)
-            pod_activity[p][(t, w)]["orders"].add(orders[m].order_id)
+            if not t is None:
+                w = order_to_ws[m]
+                pod_activity[p][(t, w)]["items"].add(i)
+                pod_activity[p][(t, w)]["orders"].add(orders[m].order_id)
 
 
         ### Step 4: group consecutive active time steps into Tasks 
