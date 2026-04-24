@@ -63,6 +63,7 @@ def main():
         config=SimulatorConfig(
             order_gen_config=[config.INTERRARIVAL_TIME_ORDER, config.PROB_1_ITEM_ORDER, config.GEO_DIST_PARAM_ORDER],
             warm_up = 30*60,
+            time_horizon=None,
             path_to_save_stat = 'Simulator/output/report_opt',
             optimization_enabled=True,
             optimization_interval=config.DELTA_T_OPT # 15*60

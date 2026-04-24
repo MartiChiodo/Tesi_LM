@@ -10,68 +10,63 @@ from Simulator.scripts.core.entities import Visit, Task
 from Simulator.scripts.opt.decomposition_benchmark import solve_by_decomposition
 
 
-# Constants
-
-OBATCH_SIZE = 50
-TIME_UNIT   = 20    # seconds per discrete period 
-N_TIME      = 60   # number of discrete periods  
-
+### CONSTANTS
+OBATCH_SIZE = 50    # max orders pulled from backlog per optimization cycle
+TIME_UNIT   = 20    # seconds per discrete time period
+N_TIME      = 60    # number of discrete periods in the scheduling horizon
 
 
-# OptManager
 
 class OptManager:
     """
-    Static data (warehouse topology, time-space network) is computed once at
-    construction time.  Simulation-dependent data (orders, active tasks) is
-    injected each time :meth:`build_exact_model` is called.
+    Manages the MIP optimization pipeline for the warehouse simulator.
+
+    Static data (topology, time-space network) is computed once at construction.
+    Simulation-dependent data (orders, tasks) is injected at each optimization call.
 
     Attributes
     ----------
-    nodes               : list[tuple]              All (location, time) nodes.
-    travelling_arcs     : list[list[tuple]]        Arcs representing possible pod movements.
-    idle_arcs           : list[list[tuple]]        Arcs representing pod staying put.
-    all_arcs            : list[list[tuple]]        travelling_arcs + idle_arcs.
-    incoming_arc_idx    : dict[tuple, list[int]]   Indices into all_arcs of arcs arriving at each node.
-    outgoing_arc_idx    : dict[tuple, list[int]]   Indices into all_arcs of arcs leaving each node.
-    pod_indices_by_sku  : dict[int, list[int]]     Pod indices that contain each SKU.
+    nodes               : list[tuple]            All (location, time) nodes in the network.
+    travelling_arcs     : list[list[tuple]]      Arcs representing feasible pod movements.
+    idle_arcs           : list[list[tuple]]      Arcs representing pods staying in place.
+    all_arcs            : list[list[tuple]]      travelling_arcs + idle_arcs.
+    incoming_arc_idx    : dict[tuple, list[int]] Arc indices arriving at each node.
+    outgoing_arc_idx    : dict[tuple, list[int]] Arc indices leaving each node.
+    pod_indices_by_sku  : dict[int, list[int]]   Pod indices that stock each SKU.
     """
 
     def __init__(self, warehouse: Warehouse) -> None:
         self._warehouse = warehouse
 
-        ####  Warehouse scalars
         self.n_skus         = warehouse.num_skus
         self.n_pods         = len(warehouse.pods)
         self.n_workstations = len(warehouse.workstations)
 
-        # Pod and workstation location identifiers
-        L = [p.storage_location for p in warehouse.pods]
-        W = [ws.position        for ws in warehouse.workstations]
-        self._L = L
-        self._W = W
+        # Pod storage locations and workstation positions (used in arc construction)
+        self._L = [p.storage_location for p in warehouse.pods]
+        self._W = [ws.position        for ws in warehouse.workstations]
 
-        # SKU → list of pod indices that carry it
+        # SKU → pods that carry it (used to restrict x1/x2 domains)
         self.pod_indices_by_sku: dict[int, list[int]] = defaultdict(list)
         for ip, pod in enumerate(warehouse.pods):
             for sku in pod.items:
                 self.pod_indices_by_sku[sku].append(ip)
 
-        # Workstation processing parameters (assumed uniform across stations)
+        # Workstation parameters (assumed uniform across all stations)
         ws0 = warehouse.workstations[0]
         self.CAP_WS     = ws0.order_capacity
         self.DELTA_ITEM = ws0.item_process_time
         self.DELTA_POD  = ws0.pod_process_time
-        self.N_TIME = N_TIME
-        self.TIME_UNIT = TIME_UNIT
+        self.N_TIME     = N_TIME
+        self.TIME_UNIT  = TIME_UNIT
 
-        ### Time-space network 
         logging.info("[OptManager] Building time-space network ...")
         self.nodes, self.travelling_arcs, self.idle_arcs = \
-            self._build_network(warehouse, L, W)
+            self.build_network(warehouse, self._L, self._W)
 
         self.all_arcs = self.travelling_arcs + self.idle_arcs
 
+        # Index arcs by destination and source node for fast constraint generation
         self.incoming_arc_idx: dict[tuple, list[int]] = defaultdict(list)
         self.outgoing_arc_idx: dict[tuple, list[int]] = defaultdict(list)
         for idx, (src, dst) in enumerate(self.all_arcs):
@@ -80,115 +75,96 @@ class OptManager:
 
         logging.info(
             "[OptManager] Network ready: %d nodes, %d travelling arcs, %d idle arcs.",
-            len(self.nodes), len(self.travelling_arcs), len(self.idle_arcs)
+            len(self.nodes), len(self.travelling_arcs), len(self.idle_arcs),
         )
 
-    
-    # Network construction (static)
-    def _build_network(
+
+    ### NETWORK CONSTRUCTION 
+
+    def build_network(
         self,
         warehouse: Warehouse,
         L: list[int],
         W: list[int],
     ) -> tuple[list, list, list]:
         """
-        Build nodes, travelling arcs and idle arcs for the time-space network.
-        """
+        Build the time-space network for pod routing.
 
+        Nodes are (location, time) pairs. Travelling arcs connect locations
+        reachable within the horizon; idle arcs represent staying in place.
+        Only pod↔workstation and workstation↔workstation movements are modelled
+        (pod↔pod arcs are excluded by design).
+        """
         all_locations = L + W
         nodes = list(product(all_locations, range(N_TIME)))
 
-        # Precompute travel times (discretized)
-        travel_dt = {}
+        # Discretize pairwise travel times (ceiling to nearest time unit)
+        travel_dt: dict[tuple, int] = {}
         for l1 in all_locations:
             for l2 in all_locations:
                 if l1 == l2:
                     continue
-
                 travel_dt[(l1, l2)] = int(np.ceil(
                     warehouse.travel_time(
                         warehouse.cell2coord(l1),
                         warehouse.cell2coord(l2),
-                        None
+                        None,
                     ) / TIME_UNIT
                 ))
 
-        # Travelling arcs (time-feasible only and only pod -> wst, wst -> pod e wst -> wst) 
         travelling_arcs = []
 
-        # POD -> WST
-        for l1 in L:
-            for l2 in W:
-                dt = travel_dt[(l1, l2)]
-                if dt >= N_TIME:
-                    continue
+        def _add_arcs(sources, destinations):
+            """Append time-feasible arcs from each source location to each destination."""
+            for l1 in sources:
+                for l2 in destinations:
+                    if l1 == l2:
+                        continue
+                    dt = travel_dt[(l1, l2)]
+                    if dt >= N_TIME:
+                        continue
+                    for t1 in range(N_TIME - dt):
+                        travelling_arcs.append([(l1, t1), (l2, t1 + dt)])
 
-                for t1 in range(N_TIME - dt):
-                    travelling_arcs.append(
-                        [(l1, t1), (l2, t1 + dt)]
-                    )
+        _add_arcs(L, W)   # pod   → workstation
+        _add_arcs(W, L)   # workstation → pod
+        _add_arcs(W, W)   # workstation → workstation
 
-        # WST -> POD
-        for l1 in W:
-            for l2 in L:
-                dt = travel_dt[(l1, l2)]
-                if dt >= N_TIME:
-                    continue
-
-                for t1 in range(N_TIME - dt):
-                    travelling_arcs.append(
-                        [(l1, t1), (l2, t1 + dt)]
-                    )
-
-        # WST -> WST
-        for l1 in W:
-            for l2 in W:
-                if l1 == l2:
-                    continue
-
-                dt = travel_dt[(l1, l2)]
-                if dt >= N_TIME:
-                    continue
-
-                for t1 in range(N_TIME - dt):
-                    travelling_arcs.append(
-                        [(l1, t1), (l2, t1 + dt)]
-                    )
-
-        # Idle arcs (stay in same location)
+        # Idle arcs: pod/workstation stays at the same location each period
         idle_arcs = [
-            [(l, t), (l, t + 1)]
-            for (l, t) in product(all_locations, range(N_TIME))
+            [(loc, t), (loc, t + 1)]
+            for (loc, t) in product(all_locations, range(N_TIME))
             if t + 1 < N_TIME
         ]
 
         return nodes, travelling_arcs, idle_arcs
 
 
-    # Simulation-dependent data extraction
+    ### ORDER EXTRACTION 
 
-    def _extract_orders(self, state) -> tuple[list, list]:
+    def extract_orders(self, state) -> tuple[list, list]:
         """
-        Extract the batch of orders and their pending item lists from the
-        current simulation state.
+        Collect the orders to optimize and their pending item lists.
+
+        Combines a fresh backlog batch with orders already at workstations.
+        For open orders, items already covered by active tasks are subtracted.
 
         Returns
         -------
-        orders       : list[Order]       Orders to optimise over.
-        orders_items : list[list[int]]   Corresponding pending SKU lists.
+        orders       : list[Order]
+        orders_items : list[list[int]]   Pending SKU list per order (same index).
         """
-        # Backlog batch
+        # Pull up to OBATCH_SIZE orders from the backlog queue
         backlog = state.orders_in_system.pop_many(
             n=min(OBATCH_SIZE, len(state.orders_in_system))
         )
         backlog_items = [list(o.items_required) for o in backlog]
 
-        # Orders already at workstations (open or buffered)
-        ws_orders      = []
+        ws_orders       = []
         ws_orders_items = []
 
         for ws in state.warehouse.workstations:
-            # Active visits at this workstation (to subtract already-covered items)
+            # Visits currently being processed at this workstation
             active_visits = [
                 visit
                 for task_id in ws.active_tasks
@@ -196,112 +172,126 @@ class OptManager:
                 if visit.workstation_id == ws.workstation_id
             ]
 
-            # Buffered orders — full items_required still pending
+            # Buffered orders: all items still pending
             for order_id in ws.order_buffer:
                 o = state.orders_in_system.get(order_id)
                 if o is not None:
                     ws_orders.append(o)
                     ws_orders_items.append(list(o.items_required))
 
-            # Open orders — subtract items already covered by active tasks
+            # Open orders: exclude items already claimed by active task visits
             for order_id in ws.opened_orders:
                 o = state.orders_in_system.get(order_id)
                 if o is None:
                     continue
-                covered = set()
-                for visit in active_visits:
-                    if order_id in visit.orders:
-                        covered |= visit.items
+                covered = {
+                    item
+                    for visit in active_visits
+                    if order_id in visit.orders
+                    for item in visit.items
+                }
                 remaining = list(o.items_pending - covered)
-                if len(remaining) > 0:
+                if remaining:
                     ws_orders.append(o)
                     ws_orders_items.append(remaining)
 
-        orders       = backlog      + ws_orders
-        orders_items = backlog_items + ws_orders_items
-        return orders, orders_items
-    
+        return backlog + ws_orders, backlog_items + ws_orders_items
 
+
+
+    ### TASK DESIGN AND ASSIGNMENT 
 
     def solve_task_design_and_assignment(self, sim, state):
-
-        orders, z1_sol, x1_sol, x2_sol, v2_sol = solve_by_decomposition(OptManager=self, sim=sim, state=state)
-
         """
-        z1[m,w] = 1 if order m is open at workstation w
-        v2[m,t] = 1 if ordem m is open at time t
-        x1[i,m,p] = 1 if item i for order m is picked from pod p
-        x2[i,m,t] = 1 if item i for order m is picked by time t
-        """
+        Run the optimization problem and convert the solution into Task objects.
 
-        # From binary variables to tasks and assignments
+        Calls the optimizer, then:
+        1. Maps each order to its assigned workstation and start time.
+        2. Determines which pod visits which workstation at which time step.
+        3. Groups consecutive active time steps per pod into Task objects.
+
+        Returns
+        -------
+        orders               : list[Order]
+        ordered_orders_by_w  : dict[int, list[int]]   Order indices sorted by start time, per workstation.
+        tasks                : list[Task]
+        """
+        orders, z1_sol, x1_sol, x2_sol, v2_sol = solve_by_decomposition(
+            OptManager=self, sim=sim, state=state
+        )
+
+        # z1[m,w]   = 1  order m assigned to workstation w
+        # x1[i,m,p] = 1  item i of order m retrieved from pod p
+        # x2[i,m,t] = 1  item i of order m picked by time t (cumulative)
+        # v2[m,t]   = 1  order m actively being served at time t
+
         n_orders = len(orders)
-        
-        orders_by_workstation = {w: [] for w in range(self.n_workstations)}
-        order_start_time = {}
+
+        ### Step 1: extract workstation assignments and order start times 
+
+        orders_by_workstation: dict[int, list[int]] = {w: [] for w in range(self.n_workstations)}
+        order_start_time: dict[int, int] = {}
+
         for m in range(n_orders):
-            # workstation assignment
             for w in range(self.n_workstations):
                 if z1_sol[m, w] > 0.5:
                     orders_by_workstation[w].append(m)
+                    break
 
-            # start time extraction
-            start_t = None
+            # Already-open orders start immediately; others use first active v2 period
             if orders[m].order_id in state.warehouse.workstations[w].opened_orders:
                 start_t = 0
             else:
-                for t in range(self.N_TIME):
-                    if v2_sol[m, t] > 0.5:
-                        start_t = t
-                        break
+                start_t = next(
+                    (t for t in range(self.N_TIME) if v2_sol[m, t] > 0.5),
+                    self.N_TIME,   # fallback: push to end if never active
+                )
+            order_start_time[m] = start_t
 
-            # fallback if never set
-            order_start_time[m] = start_t if start_t is not None else self.N_TIME
-
-        ordered_orders_by_w = {}
-        for w in range(self.n_workstations):
-            ordered_orders_by_w[w] = sorted(
-                orders_by_workstation[w],
-                key=lambda m: order_start_time[m]
-            )
+        # Sort orders within each workstation by start time for downstream processing
+        ordered_orders_by_w = {
+            w: sorted(idxs, key=lambda m: order_start_time[m])
+            for w, idxs in orders_by_workstation.items()
+        }
 
 
-        ### TASK DESIGN 
+        ### Step 2: build lookup maps from solution 
 
-        # Lookup maps
-        order_to_ws: dict[int, int] = {}
-        for m in range(n_orders):
-            for w in range(self.n_workstations):
-                if z1_sol[m, w] > 0.5:
-                    order_to_ws[m] = w
-                    break
+        # order index → workstation index
+        order_to_ws: dict[int, int] = {
+            m: w
+            for m in range(n_orders)
+            for w in range(self.n_workstations)
+            if z1_sol[m, w] > 0.5
+        }
 
+        # (sku, order_idx) → pod index
         item_to_pod: dict[tuple[int, int], int] = {}
         for m in range(n_orders):
             for i in orders[m].items_pending:
-                for p in range(self.n_pods):
-                    if x1_sol[i, m, p] > 0.5:
-                        item_to_pod[(i, m)] = p
-                        break
+                item_to_pod[(i, m)] = next(
+                    p for p in range(self.n_pods) if x1_sol[i, m, p] > 0.5
+                )
 
+        # (sku, order_idx) → time step at which the item is first picked
         item_to_time: dict[tuple[int, int], int] = {}
         for m in range(n_orders):
             for i in orders[m].items_pending:
                 if x2_sol[i, m, 0] > 0.5:
                     item_to_time[(i, m)] = 0
-                    continue
-                for t in range(1, self.N_TIME):
-                    if x2_sol[i, m, t] > 0.5 and x2_sol[i, m, t - 1] < 0.5:
-                        item_to_time[(i, m)] = t
-                        break
+                else:
+                    item_to_time[(i, m)] = next(
+                        t for t in range(1, self.N_TIME)
+                        if x2_sol[i, m, t] > 0.5 and x2_sol[i, m, t - 1] < 0.5
+                    )
 
 
-        # Per ogni pod: (t, w) → {items, orders} 
-        # pod_activity[p][(t, w)] = {"items": set, "orders": set}
-        pod_activity: dict[int, dict[tuple[int,int], dict]] = defaultdict(
+        ### Step 3: aggregate pod activity by (time, workstation)
+
+        # pod_activity[p][(t, w)] → {"items": set, "orders": set}
+        pod_activity: dict[int, dict[tuple[int, int], dict]] = defaultdict(
             lambda: defaultdict(lambda: {"items": set(), "orders": set()})
         )
-
         for (i, m), p in item_to_pod.items():
             if (i, m) not in item_to_time:
                 continue
@@ -311,16 +301,17 @@ class OptManager:
             pod_activity[p][(t, w)]["orders"].add(orders[m].order_id)
 
 
-        # Raggruppa timestep consecutivi per pod → blocchi = task
-        # Per ogni pod, ordina i timestep attivi e raggruppa quelli contigui (|t1-t2|<=1).
-        # Ogni blocco contiguo diventa un task; dentro ogni blocco si splitta per workstation.
+        ### Step 4: group consecutive active time steps into Tasks 
 
+        # Contiguous periods (|t1-t2| ≤ 1) for the same pod form a single task.
+        # Within each block, visits are split by destination workstation.
         tasks: list[Task] = []
         task_id = state.task_counter
 
         for p, tw_data in pod_activity.items():
-            active_ts = sorted(set(t for (t, w) in tw_data.keys()))
+            active_ts = sorted({t for (t, _) in tw_data})
 
+            # Identify contiguous blocks
             blocks: list[list[int]] = []
             current_block = [active_ts[0]]
             for t in active_ts[1:]:
@@ -332,6 +323,7 @@ class OptManager:
             blocks.append(current_block)
 
             for block in blocks:
+                # Merge items/orders for each workstation visited in this block
                 ws_data: dict[int, dict] = defaultdict(lambda: {"items": set(), "orders": set()})
                 for t in block:
                     for (bt, w), data in tw_data.items():
@@ -343,25 +335,14 @@ class OptManager:
                     Visit(workstation_id=w, orders=d["orders"], items=d["items"])
                     for w, d in ws_data.items()
                 ]
-
-                task = Task(
+                tasks.append(Task(
                     task_id=task_id,
                     pod_id=p,
                     robot_id=None,
                     stops=stops,
-                    priority=min(block),  
-                )
+                    priority=min(block),   # earlier block → higher priority
+                ))
                 task_id += 1
-                tasks.append(task)
 
-
-                                
         state.task_counter = task_id
-        return orders, ordered_orders_by_w, tasks    
-
-
-
-
-
-
-    
+        return orders, ordered_orders_by_w, tasks

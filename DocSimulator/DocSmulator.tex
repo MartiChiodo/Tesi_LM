@@ -282,7 +282,7 @@ The simulation engine is split across three Python objects to cleanly separate i
 % ── SimulatorConfig ──────────────────────────────────────────────────────────
 \subsection{\texttt{SimulatorConfig} — immutable parameters}
 
-A \texttt{frozen} dataclass that holds every parameter that does not change across replicas. It is constructed once and shared by all \texttt{run()} calls on the same \texttt{Simulator} instance.
+A dataclass that holds every parameter that does not change across replicas. It is constructed once and shared by all \texttt{run()} calls on the same \texttt{Simulator} instance.
 
 \vspace{0.4em}
 \begin{tabularx}{\textwidth}{l l X}
@@ -290,8 +290,10 @@ A \texttt{frozen} dataclass that holds every parameter that does not change acro
 \textbf{Attribute} & \textbf{Type} & \textbf{Description} \\
 \midrule
 \texttt{order\_gen\_config}    & \texttt{list[float]}  & \texttt{[interarrival\_time, prob\_1\_item, geo\_param]} — parameters for order arrival generation \\
+\texttt{time\_horizone}        & \texttt{float}        & Time horizon of the simulator in seconds.. \\
 \texttt{warm\_up}              & \texttt{float}        & Seconds discarded from statistics at run start. Default \texttt{0}. \\
 \texttt{optimization\_enabled} & \texttt{bool}         & \texttt{False} $\to$ greedy policies; \texttt{True} $\to$ optimiser \\
+\texttt{optimization\_interval} & \texttt{float}        & Time interval between two optimization in seconds. Default \texttt{15*60} \\
 \bottomrule
 \end{tabularx}
 
@@ -309,7 +311,6 @@ A plain dataclass holding all quantities that change during a simulation run. A 
 \texttt{warehouse}          & \texttt{Warehouse}                      & Physical environment and live state of all entities \\
 \texttt{future\_events}     & \texttt{PriorityQueue[Event]}           & Future events ordered by timestamp; \texttt{RELEASE\_TASK} breaks ties first \\
 \texttt{orders\_in\_system} & \texttt{PriorityQueue[Order]}           & Received orders ordered by arrival time; \texttt{BACKLOG} orders have priority \\
-\texttt{scheduled\_tasks}   & \texttt{dict[int, PriorityQueue[Task]]} & Tasks scheduled per workstation by the optimiser \\
 \texttt{released\_tasks}    & \texttt{PriorityQueue[Task]}            & Tasks ready for robot assignment \\
 \texttt{active\_tasks}      & \texttt{dict[int, Task]}                & Executing tasks, keyed by \texttt{task\_id} \\
 \texttt{orders\_counter}    & \texttt{int}                            & Monotonic counter for order IDs \\
@@ -337,28 +338,20 @@ The \texttt{Simulator} class owns the immutable configuration, the random genera
 \bottomrule
 \end{tabularx}
 
-\vspace{0.8em}
-The typical usage pattern in \texttt{run\_simulation.py} is therefore:
-
-\begin{lstlisting}[language=Python, basicstyle=\ttfamily\small]
-config = SimulatorConfig(order_gen_config=[...], warm_up=3600)
-sim    = Simulator(rng, config, warehouse_factory=lambda: Warehouse(...))
-
-sim.run(8 * 3600)   # replica 1 -- starts from a clean state
-sim.run(8 * 3600)   # replica 2 -- fully independent, zero extra code
-\end{lstlisting}
-
 \vspace{0.4em}
 The main event loop inside \texttt{run()} follows the classical DES structure:
 \begin{enumerate}[noitemsep]
     \item Rebuild \texttt{state} and \texttt{STAT\_MANAGER} from a fresh warehouse.
     \item Push the first \texttt{ARRIVAL\_ORDER} event at $t \approx 0$.
+    \item If optimization is enabled, push the first \texttt{RUN\_OPTIMIZER} event at  $t \approx 1 min$.
     \item Pop the event with the smallest timestamp from \texttt{state.future\_events}.
     \item Advance \texttt{state.current\_time} to the event time.
     \item Dispatch to the corresponding handler via the dispatch table.
     \item Repeat until the queue is empty or \texttt{TIME\_HORIZON} is reached.
     \item Write and reset statistics via \texttt{STAT\_MANAGER}.
 \end{enumerate}
+
+To be precise, the first \texttt{ARRIVAL\_ORDER} event will make arrive $30$ orders simultaneously to mimic a initial situation of a already working warehouse.
 
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -380,8 +373,8 @@ Each \texttt{EventType} is associated with a handler function with signature \te
 & Sets the order to \texttt{OPEN}, inserts it into \texttt{opened\_orders} and, if possible, generates the associated tasks and triggers \texttt{RELEASE\_TASK}. \\
 
 \texttt{RELEASE\_TASK}     
-& \texttt{Task} (without optimiser) / \texttt{int} 
-& Releases tasks: directly if the optimiser is not used, otherwise retrieving them from those scheduled for the workstation; updates the workstation state. \\
+& \texttt{Task}
+& Releases tasks, if optimizer is enabled all \texttt{RELEASE\_TASk} events will be scheduled at the end of the optimization; otherwise events will be scheduled when tasks are designed. \\
 
 \texttt{RUN\_OPTIMIZER}    
 & \todo 

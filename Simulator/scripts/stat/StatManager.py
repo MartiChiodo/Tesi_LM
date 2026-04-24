@@ -88,21 +88,23 @@ class StatManager:
 
     #  Report 
 
-    def return_statistics(self, output_path: str) -> None:
+    def return_statistics(self, sim_config, output_path: str) -> None:
         """Compute, print, and save a summary report."""
-        report = self.build_report()
+        report = self.build_report(sim_config)
         print(report)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as f:
             f.write(report)
         logging.info("Report saved to: %s", output_path)
 
-    def build_report(self) -> str:
+    def build_report(self, config) -> str:
         """Return the full report as a string."""
         lines: list[str] = []
-        lines += self.format_resource_table("WORKSTATIONS", self.ws_tracker, with_avg_oo=True)
-        lines += self.format_resource_table("ROBOTS", self.rb_tracker, with_avg_oo=False)
+        lines.append(f"Simulation with time-horizon = {config.time_horizon} sec and warm-up = {config.warm_up} sec.")
+        lines.append(f"Optimization enabled = {config.optimization_enabled}")
         lines += self.format_orders_table()
+        lines += self.format_resource_table("ROBOTS", self.rb_tracker, with_avg_oo=False)
+        lines += self.format_resource_table("WORKSTATIONS", self.ws_tracker, with_avg_oo=True)
         lines.append("\n" + "=" * 60)
         return "\n".join(lines)
 

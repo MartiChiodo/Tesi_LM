@@ -74,10 +74,10 @@ def arrival_order(event: Event, state, sim) -> None:
 
             if workstation.has_open_slot():
                 state.future_events.push(Event(
-                    time=state.current_time,
-                    type=EventType.OPEN_ORDER,
-                    info=o
-                ))
+                        time=state.current_time,
+                        type=EventType.OPEN_ORDER,
+                        info=o
+                    ))
             else:
                 workstation.order_buffer.append(order_id)
                 logging.debug("Order queued at workstation %i.   [order_queue len = %i]",
@@ -112,10 +112,12 @@ def open_order(event: Event, state, sim) -> None:
 
     workstation = state.warehouse.get_workstation(o.workstation_id)
 
-    assert len(workstation.opened_orders) < workstation.order_capacity, (
-        f"Workstation {o.workstation_id} is at full capacity "
-        f"({workstation.order_capacity}) but trying to open order {o.order_id}"
-    )
+    if len(workstation.opened_orders) > workstation.order_capacity -1:
+        workstation.order_buffer.append(o.order_id)
+        # Can happen when multiple orders arrive at once
+        logging.debug("Order %i queued at workstation %i.   [order_queue len = %i]",
+                            o.order_id, o.workstation_id, len(workstation.order_buffer))
+        return
 
     o.status = OrderStatus.OPEN
     workstation.opened_orders.add(o.order_id)
@@ -561,74 +563,87 @@ def close_order(event: Event, state, sim) -> None:
 
 
 def run_optimizer(event: Event, state, sim) -> None:
-    """Execute the optimization routine."""
+    """
+    Execute one optimization cycle: design tasks, assign orders to workstations,
+    schedule release events, and queue the next optimization run.
+    """
 
-    # Running the optimizer
     orders, ordered_orders_by_w, tasks = sim.OPT_MANAGER.solve_task_design_and_assignment(sim, state)
 
-    # Initializing tasks
+    # Reset released_tasks queue
     state.released_tasks = PriorityQueue(
-                key=lambda t: (
-                    state.warehouse.pods[t.pod_id].status != PodStatus.IDLE,
-                    t.priority,
-                ),
-                id_attr="task_id",
-            )
-    
+        key=lambda t: (
+            state.warehouse.pods[t.pod_id].status != PodStatus.IDLE,
+            t.priority,
+        ),
+        id_attr="task_id",
+    )
+
+    # Flush RELEASE_TASK events from the future queue, preserving all other event types
     ev_l = []
-    while len(state.future_events)>0:
+    while len(state.future_events) > 0:
         e = state.future_events.pop()
         if e.type != EventType.RELEASE_TASK:
             ev_l.append(e)
     for ev in ev_l:
         state.future_events.push(ev)
 
-    # orders were extracted from orders_in_system so I have to push them again
-    # Plus ordered_orders_by_w contains idx according to orders not order_id
-    
+    # Assign orders to workstations.
+    # `ordered_orders_by_w` uses indices into `orders` (not order_id), so we re-push
+    # each order into orders_in_system after updating its assignment.
     for w, elem in ordered_orders_by_w.items():
         state.warehouse.workstations[w].order_buffer = []
-        ability_to_open = state.warehouse.workstations[w].order_capacity - len(state.warehouse.workstations[w].opened_orders)
+        ability_to_open = (
+            state.warehouse.workstations[w].order_capacity
+            - len(state.warehouse.workstations[w].opened_orders)
+        )
+
         for m in elem:
-            o = orders[m] 
+            o = orders[m]
 
-            if not o.order_id in state.warehouse.workstations[w].opened_orders:
-
+            if o.order_id not in state.warehouse.workstations[w].opened_orders:
                 o.status = OrderStatus.WAITING
                 o.workstation_id = w
 
                 if ability_to_open > 0 and o.status != OrderStatus.OPEN:
+                    # Workstation has capacity: open the order immediately
                     state.future_events.push(Event(
-                            time=state.current_time,
-                            type=EventType.OPEN_ORDER,
-                            info=o
-                        ))
+                        time=state.current_time,
+                        type=EventType.OPEN_ORDER,
+                        info=o,
+                    ))
                     ability_to_open -= 1
-                    logging.debug("Order %i will be openend at workstation %i.   [openend orders = %i / %i]",
-                                o.order_id, w, len(state.warehouse.workstations[w].opened_orders), state.warehouse.workstations[w].order_capacity)
+                    logging.debug(
+                        "Order %i will be opened at workstation %i. [opened orders = %i / %i]",
+                        o.order_id, w,
+                        len(state.warehouse.workstations[w].opened_orders),
+                        state.warehouse.workstations[w].order_capacity,
+                    )
                 else:
+                    # Workstation at capacity: buffer the order
                     state.warehouse.workstations[w].order_buffer.append(o.order_id)
-                    logging.debug("Order %i queued at workstation %i.   [order_queue len = %i]",
-                                o.order_id, w, len(state.warehouse.workstations[w].order_buffer))
+                    logging.debug(
+                        "Order %i queued at workstation %i. [order_queue len = %i]",
+                        o.order_id, w,
+                        len(state.warehouse.workstations[w].order_buffer),
+                    )
 
             state.orders_in_system.push(o)
 
-
-
-    # Releasing new tasks
+    # Schedule task release events; offset by priority to stagger execution
     logging.warning("Task designing ended. Optimizer designed %i tasks.", len(tasks))
     for t in tasks:
         state.future_events.push(Event(
-                        time=state.current_time + t.priority,
-                        type=EventType.RELEASE_TASK,
-                        info=t
-                    ))
-        
-    # Scheduling next optimization
-    state.future_events.push(Event(time=state.current_time + sim.config.optimization_interval, 
-                                   type=EventType.RUN_OPTIMIZER))
+            time=state.current_time + t.priority,
+            type=EventType.RELEASE_TASK,
+            info=t,
+        ))
 
-
+    # Enqueue the next optimization run after the configured interval
+    state.future_events.push(Event(
+        time=state.current_time + sim.config.optimization_interval,
+        type=EventType.RUN_OPTIMIZER,
+    ))
 
 
 

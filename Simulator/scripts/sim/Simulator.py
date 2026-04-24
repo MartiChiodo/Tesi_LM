@@ -36,7 +36,7 @@ from Simulator.scripts.opt.OptManager import OptManager
 
 # Immutable configuration
 
-@dataclass(frozen=True)
+@dataclass
 class SimulatorConfig:
     """
     Immutable run-level parameters shared across all replicas.
@@ -47,6 +47,7 @@ class SimulatorConfig:
     optimization_enabled: bool          Optimisation-based assignment if True. Default False.
     """
     order_gen_config:        list[float]
+    time_horizon:            float
     warm_up:                 float = 0.0
     path_to_save_stat:       str = "Simulator/output/report.txt"
     optimization_enabled:    bool  = False
@@ -159,6 +160,7 @@ class Simulator:
         # Reset: build a clean state for this replica 
         fresh_warehouse   = self._warehouse_factory()
         self.state        = _build_state(fresh_warehouse)
+        self.config.time_horizon = time_horizon
 
         assert self.config.warm_up < time_horizon, "Warm-up for KPIs collection exceeds simulation time horizon."
         self.STAT_MANAGER = StatManager(fresh_warehouse, self.config.warm_up)
@@ -171,7 +173,7 @@ class Simulator:
         state    = self.state
         dispatch = self._build_dispatch()
 
-        state.future_events.push(Event(time=1e-8, type=EventType.ARRIVAL_ORDER, info = 10))
+        state.future_events.push(Event(time=1e-8, type=EventType.ARRIVAL_ORDER, info = 30))
         if self.config.optimization_enabled:
             state.future_events.push(Event(time=60, type=EventType.RUN_OPTIMIZER))
 
@@ -193,7 +195,7 @@ class Simulator:
         #  Statistics 
         logging.info("  END SIMULATION.\n")
         logging.info("Writing statistics report ...")
-        self.STAT_MANAGER.return_statistics(output_path = self.config.path_to_save_stat)
+        self.STAT_MANAGER.return_statistics(self.config, output_path = self.config.path_to_save_stat)
         self.STAT_MANAGER.reset_statistics()
 
 
@@ -225,11 +227,6 @@ class Simulator:
     ) -> None:
         """
         Dispatch *event* to its registered handler.
-
-        Raises
-        ------
-        ValueError
-            If *event.type* has no registered handler.
         """
         handler = dispatch.get(event.type)
         if handler is None:
