@@ -14,7 +14,7 @@ from Simulator.scripts.opt.decomposition_benchmark import solve_by_decomposition
 ### CONSTANTS
 OBATCH_SIZE = 50    # max orders pulled from backlog per optimization cycle
 TIME_UNIT   = 30    # seconds per discrete time period
-N_TIME      = 100    # number of discrete periods in the scheduling horizon
+N_TIME      = 50    # number of discrete periods in the scheduling horizon
 
 
 
@@ -228,9 +228,8 @@ class OptManager:
         ordered_orders_by_w  : dict[int, list[int]]   Order indices sorted by start time, per workstation.
         tasks                : list[Task]
         """
-        orders, z1_sol, x1_sol, x2_sol, v2_sol = solve_by_decomposition(
-            OptManager=self, sim=sim, state=state
-        )
+        orders, o_items, z1_sol, x1_sol, x2_sol, v2_sol, y2_sol, from_RelPod_to_PodId = \
+            solve_by_decomposition(OptManager=self, sim=sim, state=state)
 
         # z1[m,w]   = 1  order m assigned to workstation w
         # x1[im,p] = 1  item i of order m retrieved from pod p
@@ -239,7 +238,7 @@ class OptManager:
 
         n_orders = len(orders)
         relevant_pairs_for_x = [(i, m) for m in range(n_orders) 
-                                for i in state.orders_in_system.get(orders[m].order_id).items_pending]
+                                for i in o_items[m]]
 
         ### Step 1: extract workstation assignments and order start times 
 
@@ -272,9 +271,8 @@ class OptManager:
         }
 
 
-        ### Step 2: build lookup maps from solution s
+        ### Step 2: build lookup maps from solution
 
-        # order index → workstation index
         order_to_ws: dict[int, int] = {
             m: w
             for m in range(n_orders)
@@ -282,84 +280,172 @@ class OptManager:
             if z1_sol[m, w] > 0.5
         }
 
-        # (sku, order_idx) → pod index
+        # (sku, order_idx) → actual pod_id
         item_to_pod: dict[tuple[int, int], int] = {}
-        for im, (i,m) in enumerate(relevant_pairs_for_x):
-            item_to_pod[(i,m)] = next(
-                p for p in range(self.n_pods) if x1_sol[im, p] > 0.5
+        for im, (i, m) in enumerate(relevant_pairs_for_x):
+            assigned = next(
+                (p for p in range(self.n_pods) if x1_sol[im, p] > 0.5), None
             )
+            if assigned is not None:
+                item_to_pod[(i, m)] = assigned
 
-        # (sku, order_idx) → time step at which the item is first picked
+        # (sku, order_idx) → timestep at which item is first picked
         item_to_time: dict[tuple[int, int], int] = {}
-        for im, (i,m) in enumerate(relevant_pairs_for_x):
+        for im, (i, m) in enumerate(relevant_pairs_for_x):
             if x2_sol[im, 0] > 0.5:
                 item_to_time[(i, m)] = 0
             else:
                 item_to_time[(i, m)] = next(
                     (t for t in range(1, self.N_TIME)
-                    if x2_sol[im, t] > 0.5 and x2_sol[im, t - 1] < 0.5),
+                     if x2_sol[im, t] > 0.5 and x2_sol[im, t - 1] < 0.5),
                     None
                 )
 
+        ### Step 3 & 4: reconstruct pod trajectories from y2_sol → Tasks
 
-        ### Step 3: aggregate pod activity by (time, workstation)
+        workstation_positions = set(self._W)
+        storage_positions = set(self._L)
+        pos_to_ws = {
+            state.warehouse.workstations[w].position: w
+            for w in range(self.n_workstations)
+        }
 
-        # pod_activity[p][(t, w)] → {"items": set, "orders": set}
-        pod_activity: dict[int, dict[tuple[int, int], dict]] = defaultdict(
-            lambda: defaultdict(lambda: {"items": set(), "orders": set()})
+        # Precompute: for each (pod_id, t_arrival, w_idx) → items and orders to pick
+        pick_at: dict[tuple[int, int, int], dict] = defaultdict(
+            lambda: {"items": set(), "orders": set()}
         )
-        for (i, m), p in item_to_pod.items():
-            if (i, m) not in item_to_time:
+        for (i, m), p_id in item_to_pod.items():
+            t = item_to_time.get((i, m))
+            if t is None:
                 continue
-            t = item_to_time[(i, m)]
-            if not t is None:
-                w = order_to_ws[m]
-                pod_activity[p][(t, w)]["items"].add(i)
-                pod_activity[p][(t, w)]["orders"].add(orders[m].order_id)
+            w = order_to_ws.get(m)
+            if w is None:
+                continue
+            pick_at[(p_id, t, w)]["items"].add(i)
+            pick_at[(p_id, t, w)]["orders"].add(orders[m].order_id)
 
 
-        ### Step 4: group consecutive active time steps into Tasks 
-
-        # Contiguous periods (|t1-t2| ≤ 1) for the same pod form a single task.
-        # Within each block, visits are split by destination workstation.
         tasks: list[Task] = []
-        task_id = state.task_counter
 
-        for p, tw_data in pod_activity.items():
-            active_ts = sorted({t for (t, _) in tw_data})
+        for rel_p, p_id in enumerate(from_RelPod_to_PodId):
 
-            # Identify contiguous blocks
-            blocks: list[list[int]] = []
-            current_block = [active_ts[0]]
-            for t in active_ts[1:]:
-                if t - current_block[-1] <= 1:
-                    current_block.append(t)
-                else:
-                    blocks.append(current_block)
-                    current_block = [t]
-            blocks.append(current_block)
+            # Collect all arcs traversed by this pod, sorted by departure time
+            traversed = sorted(
+                (src[1], src[0], dst[1], dst[0])          # (t_src, loc_src, t_dst, loc_dst)
+                for a_idx, (src, dst) in enumerate(self.all_arcs)
+                if y2_sol[rel_p, a_idx] > 0.5
+            )
 
-            for block in blocks:
-                # Merge items/orders for each workstation visited in this block
-                ws_data: dict[int, dict] = defaultdict(lambda: {"items": set(), "orders": set()})
-                for t in block:
-                    for (bt, w), data in tw_data.items():
-                        if bt == t:
-                            ws_data[w]["items"].update(data["items"])
-                            ws_data[w]["orders"].update(data["orders"])
+            # Walk the trajectory and split into trips.
+            # A trip = sequence of workstation visits between two storage stays.
+            # A new trip starts when the pod departs from storage after returning.
+            current_stops: list[tuple[int, int]] = []   # (t_arrival, w_idx)
+            in_trip = False
 
-                stops = [
-                    Visit(workstation_id=w, orders=d["orders"], items=d["items"])
-                    for w, d in ws_data.items()
-                ]
-                tasks.append(Task(
-                    task_id=task_id,
-                    pod_id=p,
-                    robot_id=None,
-                    stops=stops,
-                    priority=min(block),   # earlier block → higher priority
-                ))
-                task_id += 1
+            for t_src, _, t_dst, loc_dst in traversed:
 
-        state.task_counter = task_id
+                if loc_dst in workstation_positions and t_dst - t_src <= 1:
+                    # Pod arrives at a workstation
+                    w_idx = pos_to_ws[loc_dst]
+                    current_stops.append((t_dst, w_idx))
+                    in_trip = True
+
+                elif loc_dst in workstation_positions and t_dst - t_src > 1:
+                    # Pod arrives at a workstation but there was idle time → close current trip as a Task
+                    stops = []
+                    for t_arr, w_idx in current_stops:
+                        data = pick_at.get((p_id, t_arr, w_idx))
+                        if data and data["items"]:
+                            stops.append(Visit(
+                                workstation_id=w_idx,
+                                orders=data["orders"],
+                                items=data["items"],
+                            ))
+                    if stops:
+                        pr = None
+                        for i,m in [(i,m) for i,m in relevant_pairs_for_x if i in stops[0].items and orders[m].order_id in stops[0].orders]:
+                            pr = item_to_time.get((i, m))
+                            if not pr == None:
+                                break 
+                        tasks.append(Task(
+                            task_id=None,
+                            pod_id=p_id,
+                            robot_id=None,
+                            stops=stops,
+                            priority=pr,
+                        ))
+
+                    # Begin new trip
+                    w_idx = pos_to_ws[loc_dst]
+                    current_stops = [(t_dst, w_idx)]
+                    in_trip = True
+
+                elif loc_dst in storage_positions and in_trip:
+                    # Pod returns to storage → close current trip as a Task
+                    stops = []
+                    for t_arr, w_idx in current_stops:
+                        data = pick_at.get((p_id, t_arr, w_idx))
+                        if data and data["items"]:
+                            stops.append(Visit(
+                                workstation_id=w_idx,
+                                orders=data["orders"],
+                                items=data["items"],
+                            ))
+                    if stops:
+                        pr = None
+                        for i,m in [(i,m) for i,m in relevant_pairs_for_x if i in stops[0].items and orders[m].order_id in stops[0].orders]:
+                            pr = item_to_time.get((i, m))
+                            if not pr == None:
+                                break 
+                        tasks.append(Task(
+                            task_id=None,
+                            pod_id=p_id,
+                            robot_id=None,
+                            stops=stops,
+                            priority=pr,
+                        ))
+                    current_stops = []
+                    in_trip = False
+
+            # Handle trip still open at end of horizon (pod never returned to storage)
+            if current_stops:
+                stops = []
+                for t_arr, w_idx in current_stops:
+                    data = pick_at.get((p_id, t_arr, w_idx))
+                    if data and data["items"]:
+                        stops.append(Visit(
+                            workstation_id=w_idx,
+                            orders=data["orders"],
+                            items=data["items"],
+                        ))
+                if stops:
+                    pr = None
+                    for i,m in [(i,m) for i,m in relevant_pairs_for_x if i in stops[0].items and orders[m].order_id in stops[0].orders]:
+                        pr = item_to_time.get((i, m))
+                        if not pr == None:
+                            break 
+                    tasks.append(Task(
+                        task_id=None,
+                        pod_id=p_id,
+                        robot_id=None,
+                        stops=stops,
+                        priority=pr,
+                    ))
+
+        # Assigning priority to task
+        for task in tasks:
+            t_picking =  task.priority
+            ws = state.warehouse.workstations[task.stops[0].workstation_id]
+            pod = state.warehouse.pods[task.pod_id]
+            pr = (t_picking * self.TIME_UNIT - 0.5*state.warehouse.travel_time(
+                    state.warehouse.cell2coord(ws.position),
+                    state.warehouse.cell2coord(pod.storage_location)
+                ))/self.N_TIME
+            task.priority = pr
+
+        # Sorting tasks according to priority
+        tasks.sort(key=lambda t: t.priority)
+        for new_id, task in enumerate(tasks):
+            task.task_id = state.task_counter + new_id
+
         return orders, ordered_orders_by_w, tasks

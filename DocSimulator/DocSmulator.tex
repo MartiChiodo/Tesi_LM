@@ -492,17 +492,71 @@ Just some private notes ...
 
 \paragraph{First stage: Order-Workstation and Order-Item-Pod Assignments}
 
-\begin{mini!}
-    {z_{mw}, x_{imp}}
-    {\sum_{w \in \mathcal{W}} \sum_{p \in \mathcal{P}} y_{wp} \label{M1_Obj}}
-    {\label{M1}}
-    {}
-    \addConstraint{\sum_{w \in \mathcal{W}} z_{mw}}{ = 1, \label{M1_Constr1}}{\forall m \in \mathcal{M}}
-    \addConstraint{\sum_{p \in \mathcal{P}_i} x_{imp}}{= 1, \label{M1_Constr2}}{\forall m \in \mathcal{M}, i \in \mathcal{I}_m}
-    \addConstraint{y_{wp} -x_{imp} - z_{mw}}{\geq - 1, \label{M1_Constr3}}{\forall w \in \mathcal{W}, m \in \mathcal{M}, i \in \mathcal{I}_m, p \in \mathcal{P}_i}
-    \addConstraint{\sum_{m \in \mathcal{M}}|\mathcal{I}_m| z_{mw}}{\leq \overline{I}, \label{M1_Constr4}}{\forall w \in \mathcal{W}}
-    \addConstraint{\sum_{m \in \mathcal{M}}|\mathcal{I}_m| z_{mw}}{\geq \underline{I}, \label{M1_Constr5}}{\forall w \in \mathcal{W}}
-\end{mini!}
+\begin{align}
+    \min \quad 
+    & \sum_{w \in \mathcal{W}} \sum_{p \in \mathcal{P}} y_{wp} \label{M1_Obj} \\[4pt]
+    \text{s.t.} \quad
+    & \sum_{w \in \mathcal{W}} z_{mw} = 1 
+     \qquad \forall m \in \mathcal{M} \label{M1_Constr1} \\
+    & \sum_{p \in \mathcal{P}_i} x_{imp} = 1 
+     \qquad \forall m \in \mathcal{M},\, i \in \mathcal{I}_m \label{M1_Constr2} \\
+    & y_{wp} - x_{imp} - z_{mw} \ge -1 
+     \qquad \forall w \in \mathcal{W},\, m \in \mathcal{M},\, i \in \mathcal{I}_m,\, p \in \mathcal{P}_i \label{M1_Constr3} \\
+    & \sum_{m \in \mathcal{M}} z_{mw} \le \overline{I} 
+     \qquad \forall w \in \mathcal{W} \label{M1_Constr4} \\
+    & \sum_{m \in \mathcal{M}} z_{mw} \ge \underline{I} 
+     \qquad \forall w \in \mathcal{W} \label{M1_Constr5} \\
+    & z_{mw} = 1 
+     \qquad \forall m \in \mathcal{M}_0 \label{M1_InitialCond}
+\end{align}
+
+where $\mathcal{M}_0 \subset \mathcal{M}$ is a subset of orders whose workstation is already assigned by the warehouse state.
+
+\paragraph{Second stage: Task Design and Scheduling}
+\begin{align}
+    \max \quad
+    & \sum_{t \in \mathcal{T}} \sum_{m \in \mathcal{M}} g_{mt} \label{M2_Obj} \\[4pt]
+    \text{s.t.} \quad
+    & \sum_{m \in \mathcal{M}(w)} v_{mt} \ge C_w
+     \qquad \forall w \in \mathcal{W},\, t \in \mathcal{T} \label{M2_Constr1} \\
+    & \sum_{m \in \mathcal{M}(w)} \sum_{i \in \mathcal{I}_m}
+    \delta^{\text{item}} (x_{imt} - x_{im,t-1})
+    + \sum_{p \in \mathcal{P}} \sum_{a \in \mathcal{A}^+_{N(w,t)}}
+    \delta^{\text{pod}} y_{pa}
+    \ge \Delta
+     \qquad \forall w \in \mathcal{W},\, t \in \mathcal{T} \setminus \{0\}
+    \label{M2_Constr2} \\
+    & \sum_{a \in \mathcal{A}^+_{N_p^0}} y_{pa} = 1
+     \qquad \forall p \in \mathcal{P} \label{M2_Constr3} \\
+    & \sum_{a \in \mathcal{A}^-_{n}} y_{pa}
+    - \sum_{a \in \mathcal{A}^+_{n}} y_{pa} = 0
+     \qquad \forall p \in \mathcal{P},\;
+    \in \mathcal{N} \setminus \left(\mathcal{N}_{\text{end}} \cup \{N_p^0\}\right)
+    \label{M2_Constr4} \\
+    & x_{imt} - x_{im,t-1}
+    \le \sum_{a \in \mathcal{A}^+_{N(w,t)}} y_{pa}
+     \qquad \forall w \in \mathcal{W},\, m \in \mathcal{M}(w),\, i \in \mathcal{I}_m,\, t \in \mathcal{T} \setminus \{0\} \\
+    & x_{imt} \ge x_{im,t-1}
+     \qquad \forall m \in \mathcal{M},\, i \in \mathcal{I}_m,\, t \in \mathcal{T} \setminus \{0\} \\
+    & v_{mt} = f_{mt} - g_{mt}
+     \qquad \forall m \in \mathcal{M},\, t \in \mathcal{T} \setminus \{0\} \\
+    & f_{mt} \ge x_{imt}
+     \qquad \forall m \in \mathcal{M},\, i \in \mathcal{I}_m,\, t \in \mathcal{T} \\
+    & g_{mt} \le x_{imt}
+     \qquad \forall m \in \mathcal{M},\, i \in \mathcal{I}_m,\, t \in \mathcal{T} \\
+    & g_{m,t+1} \ge \sum_{i \in \mathcal{I}_m} x_{imt}
+     \qquad \forall m \in \mathcal{M},\, t \in \mathcal{T} \\
+    & v_{mt} \ge v_{m,t-1} - g_{mt}
+     \qquad \forall m \in \mathcal{M},\, t \in \mathcal{T} \label{Enforcing_IC} \\
+    & v_{m,0} = 0
+     \qquad \forall m \in \mathcal{M}_0 \label{IC}
+\end{align}
+
+Observations:
+\begin{itemize}
+    \item Constraints \eqref{IC} and \eqref{Enforcing_IC} are needed for enforcing the initial conditions given by the orders already opened at workstations.
+    \item All the variables are cumulative.
+\end{itemize}
 
 
 

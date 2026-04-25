@@ -142,8 +142,7 @@ class Workstation:
 
     status : WorkstationPickingStatus   Whether the workstation is IDLE or currently BUSY picking items.
     order_buffer : list[int]            Order IDs queued to be opened when a slot becomes available.
-    picking_buffer : list[int]          Task IDs released to released_tasks queue but not yet assigned to robots.
-                                        Queued here when workstation is busy (BUSY status).
+    picking_buffer : dict[int, float]   Task ID queued here when workstation is busy (BUSY status) with their arrival time.
 
 
     Notes
@@ -164,7 +163,7 @@ class Workstation:
 
     opened_orders: set[int] = field(default_factory=set)
     order_buffer: list[int] = field(default_factory=list)
-    picking_buffer: list[int] = field(default_factory=list)
+    picking_buffer: dict[int, float] = field(default_factory=dict)
     active_tasks: set[int] = field(default_factory=set)
     released_tasks: set[int] = field(default_factory=set)
     status: WorkstationPickingStatus = WorkstationPickingStatus.IDLE
