@@ -12,9 +12,9 @@ from Simulator.scripts.opt.decomposition_benchmark import solve_by_decomposition
 
 
 ### CONSTANTS
-OBATCH_SIZE = 50    # max orders pulled from backlog per optimization cycle
+OBATCH_SIZE = 70    # max orders pulled from backlog per optimization cycle
 TIME_UNIT   = 30    # seconds per discrete time period
-N_TIME      = 50    # number of discrete periods in the scheduling horizon
+N_TIME      = 70    # number of discrete periods in the scheduling horizon
 
 
 

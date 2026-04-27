@@ -238,7 +238,9 @@ def solve_by_decomposition(OptManager, sim, state):
             for t in range(OptManager.N_TIME)
         ) +
         0.2 * gb.quicksum(x2[im, OptManager.N_TIME-1] 
-                          for im in range(len(relevant_pairs_for_x))),
+                          for im in range(len(relevant_pairs_for_x)))
+        - 0.5*gb.quicksum((state.current_time - orders[m].arrival_time)/OptManager.TIME_UNIT*(1-f2[m,OptManager.N_TIME - 1])
+                          for m in range(n_orders)), # penalty for orders I won't even open based on how long they have been in backlog
         sense=gb.GRB.MAXIMIZE
     )
 

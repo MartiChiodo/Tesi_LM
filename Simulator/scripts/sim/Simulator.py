@@ -177,25 +177,30 @@ class Simulator:
         if self.config.optimization_enabled:
             state.future_events.push(Event(time=60, type=EventType.RUN_OPTIMIZER))
 
-        while not state.future_events.is_empty() and state.current_time < time_horizon:
-            event              = state.future_events.pop()
-            state.current_time = event.time
+        event_to_process = state.future_events.pop()
+        while event_to_process.time < time_horizon:
+            state.current_time = event_to_process.time
             state.event_count += 1
+
+            for ws in state.warehouse.workstations:
+                assert len(ws.opened_orders) <= ws.order_capacity, f'Workstation {ws.workstation_id} has {len(ws.opened_orders)} orders opened'
 
             logging.debug(
                 "   EVENT NUM %-4d  current_time = %s   %-20s  [queue size = %d]",
                 state.event_count,
                 _fmt_time(state.current_time),
-                event.type.name,
+                event_to_process.type.name,
                 len(state.future_events),
             )
 
-            self._process_event(event, state, dispatch)
+            self._process_event(event_to_process, state, dispatch)
+
+            event_to_process = state.future_events.pop()
 
         #  Statistics 
         logging.info("  END SIMULATION.\n")
         logging.info("Writing statistics report ...")
-        self.STAT_MANAGER.return_statistics(self.config, output_path = self.config.path_to_save_stat)
+        self.STAT_MANAGER.return_statistics(self.config, self.state, output_path = self.config.path_to_save_stat)
         self.STAT_MANAGER.reset_statistics()
 
 

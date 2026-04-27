@@ -3,13 +3,13 @@
 
 
 # Warehouse Layout 
-NUM_PODS         = 50
+NUM_PODS         = 100
 NUM_SKUS         = 1000
 NUM_ROBOTS       = 9
 NUM_WORKSTATIONS = 4
 NUM_SKUS_PER_POD = 20
 
-GRID_ROWS = 5    # number of rows for the pod grid
+GRID_ROWS = 10    # number of rows for the pod grid
 GRID_COLS = 10    # number of columns for the pod grid
 
 ROBOT_SPEED = 0.34       # cells per seconds (circa 1 m/s assuming cells are squares 1.5mx1.5m and L1 paths)

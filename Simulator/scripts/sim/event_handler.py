@@ -127,7 +127,7 @@ def open_order(event: Event, state, sim) -> None:
 
     sim.STAT_MANAGER.update_statistic(
         type='WS_AVG_OO',
-        info=[workstation.workstation_id, len(workstation.opened_orders), state.current_time]
+        info=[workstation.workstation_id, +1, state.current_time]
     )
 
     logging.debug("Order %i (skus required = %s) opened at workstation %i.   [open_orders = %i/%i]",
@@ -291,6 +291,13 @@ def start_task(event: Event, state, sim) -> None:
         first_visit.orders, state.current_time + travel_time,
         idle_robots, len(state.warehouse.robots)
     )
+
+    # Updating stats
+    sim.STAT_MANAGER.update_statistic(
+        type='POD_AVG_MOVING',
+        info=[+1, state.current_time]
+    )
+    
 
 
 def arrival_pod_wst(event: Event, state, sim) -> None:
@@ -502,6 +509,11 @@ def end_picking(event: Event, state, sim) -> None:
             order = state.orders_in_system.get(order_id)
             if order is None:
                 continue
+
+            # Updating statistics
+            if sim.STAT_MANAGER.WARM_UP <= state.current_time:
+                sim.STAT_MANAGER.throughput += len(order.items_pending and completed_visit.items)
+
             order.items_pending -= completed_visit.items
             assert len(order.items_pending) >= 0, (
                 f"Order {order_id} has negative pending items after picking"
@@ -577,6 +589,12 @@ def return_pod(event: Event, state, sim) -> None:
     if not state.released_tasks.is_empty():
         state.future_events.push(Event(time=state.current_time, type=EventType.START_TASK))
 
+     # Updating stats
+    sim.STAT_MANAGER.update_statistic(
+        type='POD_AVG_MOVING',
+        info=[-1, state.current_time]
+    )
+
 
 def close_order(event: Event, state, sim) -> None:
     """
@@ -594,14 +612,15 @@ def close_order(event: Event, state, sim) -> None:
         f"Order {order.order_id} expected OPEN at close, got {order.status.name}"
     )
 
-    workstation        = state.warehouse.get_workstation(order.workstation_id)
-    order.status       = OrderStatus.CLOSED
+    workstation  = state.warehouse.get_workstation(order.workstation_id)
+    order.status  = OrderStatus.CLOSED
     workstation.opened_orders.discard(order.order_id)
 
     sim.STAT_MANAGER.update_statistic(
         type='WS_AVG_OO',
-        info=[workstation.workstation_id, len(workstation.opened_orders), state.current_time]
+        info=[workstation.workstation_id, -1, state.current_time]
     )
+    
     sim.STAT_MANAGER.update_statistic(type='OFT', info=[order, state.current_time])
 
     flow_time = state.current_time - order.arrival_time

@@ -1,7 +1,7 @@
 import logging
 import os
 
-from Simulator.scripts.core.enums import WorkstationPickingStatus, RobotStatus
+from Simulator.scripts.core.enums import WorkstationPickingStatus, RobotStatus, OrderStatus
 from Simulator.scripts.stat.core import *
 
 
@@ -41,6 +41,10 @@ class StatManager:
         # Time spent in computation for decision-making
         self.decisions_computing_time = 0
 
+        # Pod Moved and throughput
+        self.avg_number_pod_moving = TimeWeightedMeanTracker(1, warm_up)
+        self.throughput = 0
+
      
 
     def update_statistic(self, type: str, info: list) -> None:
@@ -57,6 +61,7 @@ class StatManager:
             - WS_FREQ    : [ws_id, WorkstationPickingStatus, clock]
             - RB_FREQ    : [robot_id, RobotStatus, clock]
             - WS_AVG_OO  : [ws_id, new_open_order_count, clock]
+            - POD_AVG_MOVING : [variation, clock]
         """
         stat = StatType(type)
 
@@ -84,36 +89,54 @@ class StatManager:
                     self.rb_tracker.record(rb_id, new_state.value, clock)
 
             case StatType.WS_AVG_OPEN_ORDER:
-                ws_id, new_value, clock = info[0], info[1], info[2]
-                effective_clock = max(clock, self.WARM_UP)
+                ws_id, variation, clock = info[0], info[1], info[2]
+                new_value = self.oo_tracker.last_val[ws_id] + variation
+                effective_clock = max(clock, self.WARM_UP)       
                 self.oo_tracker.record(ws_id, new_value, effective_clock)
+
+            case StatType.POD_AVG_MOVING:
+                variation, clock = info[0], info[1]
+                new_value = self.avg_number_pod_moving.last_val[0] + variation
+                effective_clock = max(clock, self.WARM_UP)
+                self.avg_number_pod_moving.record(0, new_value, effective_clock)
 
 
     #  Report 
 
-    def return_statistics(self, sim_config, output_path: str) -> None:
+    def return_statistics(self, sim_config, state, output_path: str) -> None:
         """Compute, print, and save a summary report."""
-        report = self.build_report(sim_config)
+
+        end_time = state.current_time
+
+        report = self.build_report(sim_config, end_time, state)
         print(report)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as f:
             f.write(report)
         logging.info("Report saved to: %s", output_path)
 
-    def build_report(self, config) -> str:
+    def build_report(self, config, end_time, state) -> str:
         """Return the full report as a string."""
         lines: list[str] = []
         lines.append(f"Simulation with time-horizon = {config.time_horizon} sec and warm-up = {config.warm_up} sec.")
         lines.append(f"Optimization enabled = {config.optimization_enabled}")
+
+        lines.append(f"\n Total number of items picked (throughtput) = {self.throughput}.\n Average number of pod moving simultaneously = {self.avg_number_pod_moving.mean(0, end_time)}.")
         lines.append(f"Computational time spent for making decisions = {self.decisions_computing_time} sec.")
-        lines += self.format_orders_table()
-        lines += self.format_resource_table("ROBOTS", self.rb_tracker, with_avg_oo=False)
-        lines += self.format_resource_table("WORKSTATIONS", self.ws_tracker, with_avg_oo=True)
+
+        lines += self.format_closed_orders_table()
+        lines.append(f"\n In the system there are still {len([o for o in state.orders_in_system if o.status == OrderStatus.BACKLOG])} order(s) in backlog, {len([o for o in state.orders_in_system if o.status == OrderStatus.WAITING])} order(s) enqueued at a workstation and {len([o for o in state.orders_in_system if o.status == OrderStatus.OPEN])} order(s) open at a workstation.")
+        if len([o for o in state.orders_in_system if o.status == OrderStatus.BACKLOG]) > 0:
+            lines+=self.format_backlog_orders_table(state.orders_in_system, end_time)
+        
+
+        lines += self.format_resource_table("ROBOTS", self.rb_tracker, with_avg_oo=False, time_horizon=end_time)
+        lines += self.format_resource_table("WORKSTATIONS", self.ws_tracker, with_avg_oo=True, time_horizon=end_time)
         lines.append("\n" + "=" * 60)
         return "\n".join(lines)
 
     def format_resource_table(
-        self, name: str, tracker: ResourceTracker, with_avg_oo: bool
+        self, name: str, tracker: ResourceTracker, with_avg_oo: bool, time_horizon : float
     ) -> list[str]:
         lines = []
         lines.append(f"\n{'=' * 60}\n  {name}\n{'=' * 60}")
@@ -131,7 +154,7 @@ class StatManager:
         for i in range(len(usage)):
             if with_avg_oo:
                 # Use a placeholder end_clock that matches last recorded clock
-                avg_oo = self.oo_tracker.mean(i, self.oo_tracker.last_clk[i])
+                avg_oo = self.oo_tracker.mean(i, time_horizon)
                 lines.append(
                     f"  {i:<6} {usage[i,0]:>10.2f} {usage[i,1]:>10.2f} "
                     f"{util[i]:>7.1%} {avg_oo:>10.2f}"
@@ -153,7 +176,7 @@ class StatManager:
 
         return lines
 
-    def format_orders_table(self) -> list[str]:
+    def format_closed_orders_table(self) -> list[str]:
         lines = []
         lines.append(f"\n{'=' * 60}\n  ORDERS BY SIZE\n{'=' * 60}")
         lines.append(f"  {'Size':<8} {'Closed':>8} {'Avg Flow (sec)':>17}")
@@ -173,6 +196,32 @@ class StatManager:
             f"{self.oft_tracker.global_mean_flow_time():>12.2f}"
         )
         return lines
+    
+    def format_backlog_orders_table(orders_in_system, end_time) -> list[str]:
+        lines = []
+        lines.append(f"\n{'=' * 60}\n  BACKLOG ORDERS \n{'=' * 60}")
+        lines.append(f"  {'Size':<8} {'Closed':>8} {'Avg Flow (sec)':>17}")
+        lines.append("-" * 60)
+
+        tot_backlog = 0
+        backlog = {}
+        for o in orders_in_system:
+            if o.order_size in backlog.keys():
+                backlog[o.order_size][0] += 1
+                backlog[o.order_size][1] += (end_time - o.arrival_time)
+            else:
+                backlog[o.order_size][0] = 1
+                backlog[o.order_size][1] = (end_time - o.arrival_time)
+
+        sizes = backlog.keys()
+        for size in sizes:
+            n   = backlog[size][0]
+            tot_backlog += n
+            avg = backlog[size][1]/n
+            lines.append(f"  {size:<8} {n:>8} {avg:>12.2f}")
+
+        lines.append("-" * 60)
+        return lines
 
     #  Reset 
 
@@ -188,3 +237,5 @@ class StatManager:
         self.oft_tracker.reset()
         self.oo_tracker.reset()
         self.decisions_computing_time = 0
+        self.avg_number_pod_moving.reset()
+        self.throughput = 0

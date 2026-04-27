@@ -8,6 +8,7 @@ class StatType(str, Enum):
     WS_UTILIZATION    = "WS_FREQ"
     ROBOT_UTILIZATION = "RB_FREQ"
     WS_AVG_OPEN_ORDER = "WS_AVG_OO"
+    POD_AVG_MOVING = "POD_AVG_MOVING"
 
 
 # Sub-trackers 
@@ -126,7 +127,7 @@ class TimeWeightedMeanTracker:
         self.warm_up  = warm_up
         self.area     = np.zeros(n)
         self.last_val = np.zeros(n, dtype=int)
-        self.last_clk = np.full(n, warm_up)  # baseline at warm-up end
+        self.last_clk = np.full(n, float(warm_up)) 
 
     def record(self, resource_id: int, new_value: int, clock: float) -> None:
         """Register a value change for *resource_id* at *clock*."""
@@ -144,7 +145,7 @@ class TimeWeightedMeanTracker:
         elapsed_total = end_clock - self.warm_up
         if elapsed_total <= 0:
             return 0.0
-        pending = (end_clock - self.last_clk[resource_id]) * self.last_val[resource_id]
+        pending = (end_clock - self.last_clk[resource_id]) * self.last_val[resource_id] if (end_clock - self.last_clk[resource_id])>= 0 else 0
         return (self.area[resource_id] + pending) / elapsed_total
 
     def reset(self) -> None:
