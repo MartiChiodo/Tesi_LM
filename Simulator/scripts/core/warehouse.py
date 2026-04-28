@@ -321,7 +321,9 @@ class Warehouse:
         nominal_time = self.manhattan_distance(position_a, position_b) / self.robot_speed
 
         if random_generator is not None:
-            noise = abs(random_generator.triangular(0, 10, 30))
+            # Noise is drawn from a Beta(2,5) with support [0, 0.5*nominal_time]
+            # Mean is 2/(2+5)*0.5*nominal_time = 0.14286*nominal_time
+            noise = random_generator.beta(a=2, b = 5)*0.5*nominal_time
             return nominal_time + noise
 
         return nominal_time

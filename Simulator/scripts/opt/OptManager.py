@@ -106,7 +106,7 @@ class OptManager:
                 if l1 == l2:
                     continue
                 travel_dt[(l1, l2)] = int(np.ceil(
-                    warehouse.travel_time(
+                    1.1*warehouse.travel_time(
                         warehouse.cell2coord(l1),
                         warehouse.cell2coord(l2),
                         None,

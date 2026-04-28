@@ -28,6 +28,9 @@ def main():
         cfg = load_experiment(EXPERIMENT_ID)
         # print(cfg.keys())
 
+        for handler in logging.root.handlers[:]:
+            logging.root.removeHandler(handler)
+
         logging.basicConfig(
             filename=os.path.join(os.path.dirname(__file__), f"output/logs/logs_{EXPERIMENT_ID}_Seed{SEED}.log"),
             encoding="utf-8",
