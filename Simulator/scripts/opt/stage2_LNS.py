@@ -340,7 +340,7 @@ def lns_stage2(d, time_budget=TIME_BUDGET, seed=SEED):
           best = obj
           x_best, f_best, g_best, v_best, y_best = x_new, f_new, g_new, v_new, y_new
           total_active, total_arr = _loads(d, y_best, range(n_pods), ws_loc_to_w, n_travel, T)
-          stall = 0
+          stall, it_no_improv = 0, 0
           logging.info("[lns_stage2] iter %d | objective %.4f | improved by %.4f "
                        "| hole %d pods | %.0fs elapsed",
                        it, best, delta, k, time.perf_counter() - t0)

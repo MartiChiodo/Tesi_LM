@@ -26,20 +26,21 @@ def main():
         EXPERIMENT_IDS = [int(slurm_id)]
     else:
         # Siamo in locale: lista manuale
-        EXPERIMENT_IDS  = [11,12,13,14,31,32,33,34,51,52,53,54]
+        EXPERIMENT_IDS = [11,12,13,14,31,32,33,34,51,52,53,54]
+        EXPERIMENT_IDS = [0]
 
     # Seed
     SEEDS = [343310, 293874, 301060, 300871, 30201, 50102]  
-    SEEDS = [987034, 570183, 789124, 612937]
-    OPTIM = False
+    SEEDS = [343310, 293874, 301060, 300871, 30201, 50102, 987034, 570183, 789124, 612937]
+    OPTIM = True
 
     for SEED in SEEDS:
 
         print(f"Usando SEED={SEED}, EXPERIMENT_IDS={EXPERIMENT_IDS}")
 
         base_dir = os.path.dirname(__file__)
-        path_to_logs = os.path.join(base_dir, "output", "logs", f"Opt_{OPTIM}")
-        path_to_reports = os.path.join(base_dir, "output", "reports", f"Opt_{OPTIM}")
+        path_to_logs = os.path.join(base_dir, "output", "logs", "exact_solver", f"Opt_{OPTIM}")
+        path_to_reports = os.path.join(base_dir, "output", "reports", "exact_solver", f"Opt_{OPTIM}")
         os.makedirs(path_to_logs, exist_ok=True)
         os.makedirs(path_to_reports, exist_ok=True)
 

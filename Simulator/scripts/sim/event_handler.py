@@ -7,11 +7,11 @@ config and the random generator.
 """
 
 import logging, time
-from scripts.core.entities import Order, Event, Task, Visit
-from scripts.core.warehouse import Warehouse
+from scripts.core.entities import Order, Event
 from scripts.core.enums import OrderStatus, RobotStatus, PodStatus, WorkstationPickingStatus, EventType
 from scripts.opt.policies import assign_order_to_workstation_policy, design_tasks_for_ws, get_nearest_idle_robot
 from scripts.core.queues import PriorityQueue
+from scripts.opt.gurobi_decomposition import gurobi_benchmark
 
 # A pod waiting longer than this at a workstation is considered stuck
 TIME_LIMIT_AT_WS = 600
@@ -826,8 +826,10 @@ def run_optimizer(event: Event, state, sim) -> None:
 
     ### Solve and dispatch
     st = time.time()
-    orders, ordered_orders_by_w, tasks = sim.OPT_MANAGER.solve_task_design_and_assignment(sim, state)
+    # orders, ordered_orders_by_w, tasks = sim.OPT_MANAGER.solve_task_design_and_assignment(sim, state)
+    orders, ordered_orders_by_w, tasks = gurobi_benchmark(sim.OPT_MANAGER, sim, state)
     sim.STAT_MANAGER.decisions_computing_time += time.time() - st
+    
 
     # Fresh released queue: idle pods first, then task priority
     state.released_tasks = PriorityQueue(

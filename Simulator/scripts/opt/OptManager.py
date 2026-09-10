@@ -312,7 +312,7 @@ class OptManager:
         pod_of_item = {}  # (sku, order_idx) -> pod_idx
 
         for im, (i,m) in enumerate(relevant_pairs_for_x):
-            for w in range(self.n_skus):
+            for w in range(self.n_workstations):
                 if z1[m, w] > 0.5:
                     orders_by_workstation[w].add(m)
                     order_to_ws_m[m] = w

@@ -205,6 +205,7 @@ def lns_stage1(orders, orders_items, relevant_pairs_for_x, OptManager, state, n_
     total_load = sku_per_order @ z_best
     k, stall, it = ORDERS_INIT, 0, 0
     freq = np.zeros(n_orders, dtype=float)
+    it_no_improv = 0
 
     # one shared environment for the whole run, so the job keeps a single WLS
     # session instead of opening one per repair
@@ -212,7 +213,7 @@ def lns_stage1(orders, orders_items, relevant_pairs_for_x, OptManager, state, n_
     env.setParam("OutputFlag", 0)
     env.start()
     try:
-      while time.perf_counter() - t0 < time_budget:
+      while time.perf_counter() - t0 < time_budget and it_no_improv < 100:
           it += 1
 
           # grow when stalling, here so no gain iterations count too
@@ -239,6 +240,7 @@ def lns_stage1(orders, orders_items, relevant_pairs_for_x, OptManager, state, n_
                        sku_per_order, total_load, c_mat, env)
           if res is None:
               stall += 1
+              it_no_improv += 1
               continue
 
           x_new, z_new, y_new = res
@@ -247,12 +249,13 @@ def lns_stage1(orders, orders_items, relevant_pairs_for_x, OptManager, state, n_
 
           if delta <= 1e-9:
               stall += 1
+              it_no_improv += 1
               continue
 
           best = obj
           x_best, z_best, y_best = x_new, z_new, y_new
           total_load = sku_per_order @ z_best
-          stall = 0
+          stall, it_no_improv = 0, 0
           logging.info("[lns_stage1] iter %d | objective %.4f | improved by %.4f "
                        "| hole %d orders | %.0fs elapsed",
                        it, best, delta, k, time.perf_counter() - t0)

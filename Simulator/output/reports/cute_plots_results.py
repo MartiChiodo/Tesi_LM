@@ -13,6 +13,8 @@ from matplotlib.patches import Patch
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# CSVs are produced by process_reports.py into this subfolder
+CSV_DIR = os.path.join(BASE_DIR, "csv")
 OUTPUT_DIR = os.path.join(BASE_DIR, "plot_results")
 
 
@@ -63,11 +65,11 @@ METRICS = [
     Metric("throughput", "Throughput",
            unit="", better="max", ylim=(550, 950)),
     Metric("mean_flow_time", "Mean flow time (s)",
-           unit=r"\second", better="min", ylim=(400, 1400)),
+           unit=r"\second", better="min", ylim=(400, 1500)),
     Metric("average_pods", "Average number of pods moving",
-           unit="", better=None, ylim=(15, 42)),
+           unit="", better=None),
     Metric("computational_time", "Decision-making time (min)",
-           unit=r"\minute", better="min", ylim=(0, 42), scale=1 / 60),
+           unit=r"\minute", better="min", scale=1 / 60),
 ]
 
 SCENARIO_GROUPS = {"1x": [11, 12, 13, 14], "3x": [31, 32, 33, 34], "5x": [51, 52, 53, 54]}
@@ -98,7 +100,7 @@ def load_metric(metric: Metric) -> dict[str, pd.DataFrame]:
     """Load a metric's CSVs for both configurations."""
     data = {}
     for mode, filename in metric.files.items():
-        df = pd.read_csv(os.path.join(BASE_DIR, filename))
+        df = pd.read_csv(os.path.join(CSV_DIR, filename))
 
         # First column is always the scenario ID.
         if "Scenario" not in df.columns:
@@ -230,7 +232,6 @@ def create_boxplots(data: dict[str, pd.DataFrame], metric: Metric) -> None:
     folder = os.path.join(OUTPUT_DIR, metric.folder)
     os.makedirs(folder, exist_ok=True)
 
-    # SCENARIO_GROUPS = {"all" : [11,12,13,14,31,32,33,34,51,52,53,54]}
     for group, scenarios in SCENARIO_GROUPS.items():
         fig, ax = plt.subplots(figsize=(6.3, 3.5))
         draw_group_boxplot(ax, data, scenarios)
